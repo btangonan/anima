@@ -6,34 +6,48 @@ struct SlashCommand {
     description: String,
 }
 
-/// Read ~/.claude/commands/*.md and return name+description from YAML frontmatter.
+/// Read ~/.claude/commands/ recursively (one level of subdirs) and return
+/// name+description from YAML frontmatter. Subdir commands are prefixed:
+/// sm/introspect.md → name "sm:introspect"
 #[tauri::command]
 fn read_slash_commands() -> Vec<SlashCommand> {
     let home = std::env::var("HOME").unwrap_or_default();
     let dir = format!("{}/.claude/commands", home);
     let mut commands = Vec::new();
 
-    let entries = match fs::read_dir(&dir) {
-        Ok(e) => e,
-        Err(_) => return commands,
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
-        let content = match fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        if let Some(cmd) = parse_frontmatter(&content) {
-            commands.push(cmd);
-        }
-    }
-
+    collect_commands(&dir, None, &mut commands);
     commands.sort_by(|a, b| a.name.cmp(&b.name));
     commands
+}
+
+fn collect_commands(dir: &str, prefix: Option<&str>, out: &mut Vec<SlashCommand>) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() && prefix.is_none() {
+            // Recurse one level: folder name becomes the namespace prefix
+            let ns = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            let subdir = path.to_string_lossy().to_string();
+            collect_commands(&subdir, Some(&ns), out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            let content = match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            if let Some(mut cmd) = parse_frontmatter(&content) {
+                if let Some(ns) = prefix {
+                    cmd.name = format!("{}:{}", ns, cmd.name);
+                }
+                out.push(cmd);
+            }
+        }
+    }
 }
 
 fn parse_frontmatter(content: &str) -> Option<SlashCommand> {

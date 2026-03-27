@@ -357,12 +357,15 @@ body {
 /* ── Slash Command Menu ──────────────────── */
 
 #slash-menu {
+  position: fixed;
+  /* left/bottom set dynamically in JS to match input bar position */
+  right: 0;
   background: var(--bg2);
   border: 1px solid var(--border-hi);
-  border-top: none;
+  border-bottom: none;
   overflow-y: auto;
   max-height: 220px;
-  flex-shrink: 0;
+  z-index: 200;
 }
 #slash-menu.hidden { display: none; }
 
