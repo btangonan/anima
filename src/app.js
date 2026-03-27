@@ -104,8 +104,8 @@ async function isSelfDirectory(cwd) {
       const out = await cmd.execute();
       if (out.code === 0) return true;
     } catch (err) { console.warn('isSelfDirectory check failed:', err); }
-    const parent = dir.replace(/\/[^/]+$/, '');
-    if (!parent || parent === dir) break;
+    const parent = dir.replace(/\/[^/]+$/, '') || '/';
+    if (parent === dir) break;
     dir = parent;
   }
   return false;
