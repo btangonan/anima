@@ -153,32 +153,35 @@ async function createSession(cwd, opts = {}) {
   const modeLabel = opts.readOnly ? ' (read-only)' : '';
   pushMessage(id, { type: 'system-msg', text: `Starting in ${cwd}${modeLabel}…` });
 
+  await spawnClaude(id);
+  return id;
+}
+
+// Spawn (or re-spawn) the Claude CLI process for an existing session.
+// Called by createSession on init, and by the Escape handler to restart after interrupt.
+async function spawnClaude(id) {
+  const s = sessions.get(id);
+  if (!s) return;
+
   try {
-    // Tauri v2: attach listeners to the Command BEFORE spawn.
-    // ChildProcess (returned by spawn) only has write() + kill() — no stdout/stderr.
     const claudeArgs = [
       '-p',
       '--input-format',  'stream-json',
       '--output-format', 'stream-json',
-      '--verbose',        // required by Claude when using --print + stream-json
+      '--verbose',
       '--permission-mode', 'acceptEdits',
     ];
-    if (opts.readOnly) claudeArgs.push('--disallowed-tools', 'Edit,Write,MultiEdit,NotebookEdit,Bash');
-    const cmd = Command.create('claude', claudeArgs, { cwd });
+    if (s.readOnly) claudeArgs.push('--disallowed-tools', 'Edit,Write,MultiEdit,NotebookEdit,Bash');
+    const cmd = Command.create('claude', claudeArgs, { cwd: s.cwd });
 
-    // Line buffer: stdout arrives in chunks — accumulate until newline before parsing.
     let _buf = '';
     cmd.stdout.on('data', (chunk) => {
       _buf += chunk;
       const lines = _buf.split('\n');
-      _buf = lines.pop(); // last element may be incomplete — hold it
+      _buf = lines.pop();
       for (const line of lines) {
         if (!line.trim()) continue;
-        try {
-          handleEvent(id, JSON.parse(line));
-        } catch (_) {
-          // Discard unparseable lines — verbose noise, not user-facing content
-        }
+        try { handleEvent(id, JSON.parse(line)); } catch (_) {}
       }
     });
 
@@ -187,21 +190,19 @@ async function createSession(cwd, opts = {}) {
     });
 
     cmd.on('close', (data) => {
-      // Tauri v2 close payload: { code: number|null, signal: number|null }
       const code = (typeof data === 'object' && data !== null) ? data.code : data;
       setStatus(id, code === 0 ? 'idle' : 'error');
       pushMessage(id, { type: 'system-msg', text: `Session ended (exit ${code})` });
     });
 
     const child = await cmd.spawn();
-    session.child = child;
+    s.child = child;
+    s.toolPending = {};
 
   } catch (err) {
     pushMessage(id, { type: 'error', text: `Failed to start Claude Code: ${err}` });
     setStatus(id, 'error');
   }
-
-  return id;
 }
 
 function killSession(id) {
@@ -712,9 +713,10 @@ window.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         try { s.child.kill(); } catch (_) {}
         s.child = null;
-        pushMessage(activeSessionId, { type: 'system-msg', text: 'Interrupted' });
         clearTimeout(s._idleTimer);
-        setStatus(activeSessionId, 'error');
+        pushMessage(activeSessionId, { type: 'system-msg', text: 'Interrupted — restarting…' });
+        setStatus(activeSessionId, 'working');
+        spawnClaude(activeSessionId);
       }
     }
   });
