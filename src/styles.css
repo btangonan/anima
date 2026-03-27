@@ -15,6 +15,7 @@
   --accent:    #ffffff;
   --accent2:   #888888;
   --error-col: #888888;
+  --unread:    #d4840a;
   --font:      ui-monospace, 'SF Mono', Menlo, Monaco, 'Cascadia Code', monospace;
 
   font-family: var(--font);
@@ -165,7 +166,8 @@ body {
   align-self: center;
   font-family: var(--font);
 }
-.card-badge.error { border-color: var(--error-col); color: var(--error-col); }
+.card-badge.error  { border-color: var(--error-col); color: var(--error-col); }
+.card-badge.unread { border-color: var(--unread);    color: var(--unread); }
 
 .session-card-kill {
   position: absolute;
@@ -350,6 +352,43 @@ body {
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }
+}
+
+/* ── Slash Command Menu ──────────────────── */
+
+#slash-menu {
+  background: var(--bg2);
+  border: 1px solid var(--border-hi);
+  border-top: none;
+  overflow-y: auto;
+  max-height: 220px;
+  flex-shrink: 0;
+}
+#slash-menu.hidden { display: none; }
+
+.slash-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.slash-item:hover,
+.slash-item.active { background: var(--bg3); }
+
+.slash-item-name {
+  color: var(--accent);
+  min-width: 120px;
+  flex-shrink: 0;
+}
+.slash-item-desc {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Input Bar ─────────────────────────── */

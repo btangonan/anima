@@ -14,6 +14,7 @@
 
 const { Command } = window.__TAURI__.shell;
 const { open: openDialog } = window.__TAURI__.dialog;
+const { invoke } = window.__TAURI__.core;
 const { parse: mdParse } = window.marked;
 window.marked.setOptions({ breaks: true, gfm: true });
 
@@ -97,18 +98,18 @@ class SpriteRenderer {
 // Prevents Claude sessions from editing Pixel Terminal's own source files.
 
 async function isSelfDirectory(cwd) {
-  let dir = cwd.replace(/\/$/, ''); // strip trailing slash
+  const paths = [];
+  let dir = cwd.replace(/\/$/, '');
   for (let i = 0; i < 10; i++) {
-    try {
-      const cmd = Command.create('test', ['-f', dir + '/.pixel-terminal']);
-      const out = await cmd.execute();
-      if (out.code === 0) return true;
-    } catch (err) { console.warn('isSelfDirectory check failed:', err); }
+    paths.push(dir + '/.pixel-terminal');
     const parent = dir.replace(/\/[^/]+$/, '') || '/';
     if (parent === dir) break;
     dir = parent;
   }
-  return false;
+  const results = await Promise.all(
+    paths.map(p => Command.create('test', ['-f', p]).execute().catch(() => ({ code: 1 })))
+  );
+  return results.some(r => r.code === 0);
 }
 
 // ── Session counter (for charIndex sprite rotation) ────────
@@ -144,7 +145,8 @@ async function createSession(cwd, opts = {}) {
     status: 'idle',
     child: null,
     toolPending: {},
-    readOnly: !!opts.readOnly
+    readOnly: !!opts.readOnly,
+    unread: false,
   };
   sessions.set(id, session);
 
@@ -153,7 +155,8 @@ async function createSession(cwd, opts = {}) {
   const modeLabel = opts.readOnly ? ' (read-only)' : '';
   pushMessage(id, { type: 'system-msg', text: `Starting in ${cwd}${modeLabel}…` });
 
-  await spawnClaude(id);
+  spawnClaude(id); // fire-and-forget — all handling is callback-based
+  setStatus(id, 'waiting'); // static "waiting…" during init — no rotating words until user sends
   return id;
 }
 
@@ -263,7 +266,9 @@ function handleEvent(id, event) {
           const input = typeof b.input === 'object'
             ? JSON.stringify(b.input, null, 2)
             : String(b.input || '');
-          pushMessage(id, { type: 'tool', toolName: b.name, toolId: b.id, input, result: null });
+          if (!isInternalTool(b.name)) {
+            pushMessage(id, { type: 'tool', toolName: b.name, toolId: b.id, input, result: null });
+          }
           s.toolPending[b.id] = true;
         }
       }
@@ -305,7 +310,13 @@ function handleEvent(id, event) {
       // Debounce: Claude may immediately start another turn after result.
       // Wait 400ms before going idle so the cursor doesn't flicker between turns.
       clearTimeout(s._idleTimer);
-      s._idleTimer = setTimeout(() => setStatus(id, 'idle'), 400);
+      s._idleTimer = setTimeout(() => {
+        setStatus(id, 'idle');
+        if (activeSessionId !== id) {
+          s.unread = true;
+          updateSessionCard(id);
+        }
+      }, 400);
       break;
 
     case 'system':
@@ -331,6 +342,29 @@ function setStatus(id, status) {
   if (activeSessionId === id) updateWorkingCursor(status);
 }
 
+// Tools that are Claude Code internal scaffolding — never show in UI
+const INTERNAL_TOOLS = new Set([
+  'ToolSearch','TodoWrite','TodoRead','AskUserQuestion',
+  'TaskCreate','TaskUpdate','TaskList','TaskGet','TaskStop','TaskOutput',
+  'ExitPlanMode','EnterPlanMode','NotebookEdit',
+  'RemoteTrigger','CronCreate','CronDelete','CronList',
+  'ListMcpResourcesTool','ReadMcpResourceTool',
+  'EnterWorktree','ExitWorktree',
+]);
+function isInternalTool(name) {
+  return name.startsWith('mcp__') || INTERNAL_TOOLS.has(name);
+}
+
+const WORKING_MSGS = [
+  'thinking', 'scheming', 'deliberating', 'gallivanting', 'pondering',
+  'contemplating', 'ruminating', 'cogitating', 'hypothesizing', 'spelunking',
+  'wrangling', 'untangling', 'cross-referencing', 'noodling', 'vibing',
+  'consulting the void', 'reading the entrails', 'asking nicely',
+  'summoning context', 'doing its thing',
+];
+let _workingTimer = null;
+let _workingMsgIdx = 0;
+
 function updateWorkingCursor(status) {
   const log = document.getElementById('message-log');
   if (!log) return;
@@ -339,27 +373,48 @@ function updateWorkingCursor(status) {
     if (!cur) {
       cur = document.createElement('div');
       cur.id = 'working-cursor';
-      const label = status === 'waiting' ? 'waiting' : 'working';
-      cur.innerHTML = `<span class="cursor-blink">▋</span> ${label}…`;
       log.appendChild(cur);
       scheduleScroll();
     }
+    // Build cursor structure once, update text node only — avoid innerHTML re-parsing every 3s
+    if (!cur.firstChild) {
+      const glyph = document.createElement('span');
+      glyph.className = 'cursor-blink';
+      glyph.textContent = '▋';
+      cur.appendChild(glyph);
+      cur.appendChild(document.createTextNode(''));
+    }
+    const textNode = cur.lastChild;
+    const setMsg = () => {
+      const label = status === 'waiting' ? 'waiting' : WORKING_MSGS[_workingMsgIdx++ % WORKING_MSGS.length];
+      textNode.textContent = ' ' + label + '…';
+    };
+    setMsg();
+    clearInterval(_workingTimer);
+    if (status === 'working') {
+      _workingTimer = setInterval(setMsg, 3000);
+    }
   } else {
+    clearInterval(_workingTimer);
+    _workingTimer = null;
     cur?.remove();
   }
 }
 
 // ── Message log ────────────────────────────────────────────
 
-// rAF-coalesced scroll — multiple messages in one frame trigger only one reflow
+// rAF-coalesced scroll — only scrolls if user hasn't manually scrolled up
 let _scrollPending = false;
-function scheduleScroll() {
+let _pinToBottom = true; // false when user scrolls up; restored when user scrolls back down or sends a message
+
+function scheduleScroll(force = false) {
+  if (!force && !_pinToBottom) return;
   if (_scrollPending) return;
   _scrollPending = true;
   requestAnimationFrame(() => {
     _scrollPending = false;
     const log = document.getElementById('message-log');
-    if (log) log.scrollTop = log.scrollHeight;
+    if (log) log.lastElementChild?.scrollIntoView({ block: 'end' });
   });
 }
 
@@ -519,10 +574,15 @@ function updateSessionCard(id) {
 
   const statusEl = document.getElementById(`card-status-${id}`);
   if (statusEl) {
-    // Show IDLE badge only when idle; working/waiting/error = sprite speaks
-    statusEl.textContent = s.status === 'idle' ? 'IDLE' : s.status === 'error' ? 'ERR' : '';
-    statusEl.className = `card-badge ${s.status}`;
-    statusEl.style.display = (s.status === 'idle' || s.status === 'error') ? '' : 'none';
+    if (s.unread) {
+      statusEl.textContent = 'NEW';
+      statusEl.className = 'card-badge unread';
+      statusEl.style.display = '';
+    } else {
+      statusEl.textContent = s.status === 'idle' ? 'IDLE' : s.status === 'error' ? 'ERR' : '';
+      statusEl.className = `card-badge ${s.status}`;
+      statusEl.style.display = (s.status === 'idle' || s.status === 'error') ? '' : 'none';
+    }
   }
 
   const card = document.getElementById(`card-${id}`);
@@ -534,6 +594,9 @@ function updateSessionCard(id) {
 function setActiveSession(id) {
   const prev = activeSessionId;
   activeSessionId = id;
+  _pinToBottom = true;
+  const viewedSession = sessions.get(id);
+  if (viewedSession) viewedSession.unread = false;
   if (prev && prev !== id) updateSessionCard(prev);
   updateSessionCard(id);
   showChatView();
@@ -555,6 +618,7 @@ function showChatView() {
   document.getElementById('msg-input').disabled = false;
   document.getElementById('btn-send').disabled = false;
 }
+
 
 // ── Util ───────────────────────────────────────────────────
 
@@ -649,9 +713,89 @@ async function pickFolder() {
   }
 }
 
+// ── Slash command menu ─────────────────────────────────────
+
+let _slashCommands = [];    // loaded once on startup
+let _slashActiveIdx = -1;   // keyboard-highlighted row
+
+async function loadSlashCommands() {
+  try {
+    _slashCommands = await invoke('read_slash_commands');
+  } catch (_) {
+    _slashCommands = [];
+  }
+}
+
+function showSlashMenu(query) {
+  // query = text after the leading '/', e.g. '' or 'sm' or 'boot'
+  const menu = document.getElementById('slash-menu');
+  const q = query.toLowerCase();
+  const matches = _slashCommands.filter(c =>
+    c.name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)
+  );
+
+  if (!matches.length) { hideSlashMenu(); return; }
+
+  _slashActiveIdx = -1;
+  menu.innerHTML = matches.map((c, i) =>
+    `<div class="slash-item" data-idx="${i}" data-name="${esc(c.name)}">` +
+    `<span class="slash-item-name">/${esc(c.name)}</span>` +
+    `<span class="slash-item-desc">${esc(c.description)}</span>` +
+    `</div>`
+  ).join('');
+
+  menu.querySelectorAll('.slash-item').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // don't blur input
+      acceptSlashItem(el.dataset.name);
+    });
+  });
+
+  menu.classList.remove('hidden');
+}
+
+function hideSlashMenu() {
+  document.getElementById('slash-menu').classList.add('hidden');
+  _slashActiveIdx = -1;
+}
+
+function moveSlashSelection(delta) {
+  const menu = document.getElementById('slash-menu');
+  const items = menu.querySelectorAll('.slash-item');
+  if (!items.length) return;
+  items[_slashActiveIdx]?.classList.remove('active');
+  _slashActiveIdx = Math.max(0, Math.min(items.length - 1, _slashActiveIdx + delta));
+  const active = items[_slashActiveIdx];
+  active.classList.add('active');
+  active.scrollIntoView({ block: 'nearest' });
+}
+
+function acceptSlashItem(name) {
+  const input = document.getElementById('msg-input');
+  input.value = '/' + name + ' ';
+  input.focus();
+  hideSlashMenu();
+  autoResize(input);
+}
+
+function acceptActiveSlashItem() {
+  const menu = document.getElementById('slash-menu');
+  const items = menu.querySelectorAll('.slash-item');
+  const idx = _slashActiveIdx >= 0 ? _slashActiveIdx : 0;
+  if (items[idx]) acceptSlashItem(items[idx].dataset.name);
+}
+
 // ── Bootstrap ──────────────────────────────────────────────
 
 window.addEventListener('DOMContentLoaded', () => {
+
+  loadSlashCommands();
+
+  // Track whether user has scrolled up — suppress auto-scroll if so
+  document.getElementById('message-log').addEventListener('scroll', () => {
+    const log = document.getElementById('message-log');
+    _pinToBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
+  });
 
   // Sidebar resize
   const sidebar = document.getElementById('sidebar');
@@ -696,17 +840,47 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!text.trim() || !activeSessionId) return;
     input.value = '';
     input.style.height = ''; // reset to rows="1" — avoids WebKit scrollHeight=0 collapse
+    _pinToBottom = true;
+    hideSlashMenu();
     sendMessage(activeSessionId, text);
   });
 
   document.getElementById('msg-input').addEventListener('keydown', (e) => {
+    const menuVisible = !document.getElementById('slash-menu').classList.contains('hidden');
+    if (menuVisible) {
+      if (e.key === 'ArrowDown')  { e.preventDefault(); moveSlashSelection(1); return; }
+      if (e.key === 'ArrowUp')    { e.preventDefault(); moveSlashSelection(-1); return; }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault(); acceptActiveSlashItem(); return;
+      }
+      if (e.key === 'Escape')     { e.preventDefault(); hideSlashMenu(); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('btn-send').click(); }
   });
 
-  document.getElementById('msg-input').addEventListener('input', (e) => autoResize(e.target));
+  document.getElementById('msg-input').addEventListener('input', (e) => {
+    autoResize(e.target);
+    const val = e.target.value;
+    if (val.startsWith('/') && !val.includes(' ')) {
+      showSlashMenu(val.slice(1));
+    } else {
+      hideSlashMenu();
+    }
+  });
 
-  // Esc — cancel active Claude operation
+  // Click outside slash menu → close it
+  document.addEventListener('mousedown', (e) => {
+    const menu = document.getElementById('slash-menu');
+    const input = document.getElementById('msg-input');
+    if (!menu.classList.contains('hidden') &&
+        !menu.contains(e.target) && e.target !== input) {
+      hideSlashMenu();
+    }
+  });
+
+  // Esc — cancel active Claude operation (skip if slash menu is open)
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.getElementById('slash-menu').classList.contains('hidden')) return;
     if (e.key === 'Escape' && activeSessionId) {
       const s = sessions.get(activeSessionId);
       if (s && s.child && (s.status === 'working' || s.status === 'waiting')) {
