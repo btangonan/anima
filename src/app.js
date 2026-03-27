@@ -288,7 +288,10 @@ function handleEvent(id, event) {
               // Targeted update: swap just the status glyph instead of rebuilding all messages
               const log = document.getElementById('message-log');
               const toolEl = log?.querySelector(`[data-tool-id="${b.tool_use_id}"]`);
-              if (toolEl) toolEl.querySelector('.tool-status').textContent = '✓';
+              if (toolEl) {
+                toolEl.querySelector('.tool-status').textContent = '✓';
+                if (!toolEl.querySelector('.tool-result')) toolEl.appendChild(makeResultEl(resultText));
+              }
             }
           }
           delete s.toolPending[b.tool_use_id];
@@ -396,6 +399,18 @@ function renderMessageLog(id) {
   scheduleScroll();
 }
 
+// Render tool result content — truncated to 20 lines to keep UI scannable
+function makeResultEl(text) {
+  const out = document.createElement('div');
+  out.className = 'tool-result';
+  const lines = String(text).split('\n');
+  const MAX = 20;
+  const visible = lines.slice(0, MAX).join('\n');
+  const overflow = lines.length - MAX;
+  out.textContent = overflow > 0 ? visible + `\n… ${overflow} more lines` : visible;
+  return out;
+}
+
 function createMsgEl(msg) {
   const el = document.createElement('div');
   el.className = `msg ${msg.type}`;
@@ -419,9 +434,11 @@ function createMsgEl(msg) {
     // Cache hint — msg.input is immutable after creation
     if (msg._hint === undefined) msg._hint = toolHint(msg.toolName, msg.input);
     const hint = msg._hint;
-    const status = msg.result !== null && msg.result !== undefined ? '✓' : '…';
+    const hasResult = msg.result !== null && msg.result !== undefined;
+    const status = hasResult ? '✓' : '…';
     el.dataset.toolId = msg.toolId;
     el.innerHTML = `<div class="tool-line">${icon} <span class="tool-name">${esc(msg.toolName)}</span>${hint ? ` <span class="tool-hint">${esc(hint)}</span>` : ''} <span class="tool-status">${status}</span></div>`;
+    if (hasResult) el.appendChild(makeResultEl(msg.result));
 
   } else if (msg.type === 'system-msg') {
     el.innerHTML = `<div class="system-label">${esc(msg.text)}</div>`;

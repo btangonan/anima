@@ -303,6 +303,17 @@ body {
 .tool-name { color: var(--text-dim); }
 .tool-hint { color: var(--text-mute); }
 .tool-status { margin-left: 3px; }
+.tool-result {
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--text-mute);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 2px 0 0 12px;
+  max-height: 200px;
+  overflow-y: auto;
+  opacity: 0.7;
+}
 
 /* System messages */
 .system-label {
