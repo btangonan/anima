@@ -281,9 +281,9 @@ body {
 .msg.claude .msg-bubble p { margin-bottom: 2px; }
 /* Last paragraph colored orange via JS (p:last-child unreliable with marked trailing nodes) */
 .msg.claude .msg-bubble ul,
-.msg.claude .msg-bubble ol { padding-left: 16px; margin: 1px 0; }
-.msg.claude .msg-bubble li { margin-bottom: 1px; }
-.msg.claude .msg-bubble li > p { margin: 0; }
+.msg.claude .msg-bubble ol { padding-left: 16px; margin: 2px 0; white-space: normal; }
+.msg.claude .msg-bubble li { margin-bottom: 2px; white-space: normal; }
+.msg.claude .msg-bubble li > p { margin: 0; white-space: normal; }
 
 /* Tool call — single line */
 .tool-line {
@@ -414,8 +414,8 @@ canvas.sprite-canvas {
 }
 
 .sprite-wrap {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
   overflow: hidden;
   display: flex;

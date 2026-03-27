@@ -46,11 +46,11 @@ class SpriteRenderer {
     const animal = ANIMALS[charIndex % ANIMALS.length];
     const data = SPRITE_DATA[animal];
 
-    el.style.width = '32px';
-    el.style.height = '32px';
+    el.style.width = '40px';
+    el.style.height = '40px';
     el.style.flexShrink = '0';
     el.style.backgroundImage = "url('" + data + "')";
-    el.style.backgroundSize = '128px 32px';
+    el.style.backgroundSize = '160px 40px';
     el.style.backgroundRepeat = 'no-repeat';
     el.style.backgroundPosition = '0 0';
     el.style.imageRendering = 'pixelated';
@@ -74,7 +74,7 @@ class SpriteRenderer {
       if (this._status === 'idle' || this._status === 'error') return;
       if (ts - this._lastTs >= 1000 / this._FPS) {
         this._frameIdx = (this._frameIdx + 1) % 4;
-        this.el.style.backgroundPosition = (-this._frameIdx * 32) + 'px 0';
+        this.el.style.backgroundPosition = (-this._frameIdx * 40) + 'px 0';
         this._lastTs = ts;
       }
     };
