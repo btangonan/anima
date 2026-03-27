@@ -2,8 +2,8 @@
 
 **Purpose**: Follow this in every session for this repo. Keep memory sharp. Keep outputs concrete. Cut rework.
 
-## 🧠 Project Memory (Chroma)
-Use server `chroma`. Collection `project_memory`.
+## 🧠 Project Memory (Gemini Memory)
+Use server `gemini-memory`. Collection `pixel_terminal`.
 
 Log after any confirmed fix, decision, gotcha, or preference.
 
@@ -12,22 +12,19 @@ Log after any confirmed fix, decision, gotcha, or preference.
 - **metadatas**: `{ "type":"decision|fix|tip|preference", "tags":"comma,separated", "source":"file|PR|spec|issue" }`
 - **ids**: stable string if updating the same fact.
 
-### Chroma Calls
+### Gemini Memory Calls
 ```javascript
-// Create once:
-mcp__chroma__chroma_create_collection { "collection_name": "project_memory" }
-
 // Add:
-mcp__chroma__chroma_add_documents {
-  "collection_name": "project_memory",
+mcp__gemini-memory__memory_add {
+  "collection": "pixel_terminal",
   "documents": ["<text>"],
   "metadatas": [{"type":"<type>","tags":"a,b,c","source":"<src>"}],
   "ids": ["<stable-id>"]
 }
 
 // Query (start with 5; escalate only if <3 strong hits):
-mcp__chroma__chroma_query_documents {
-  "collection_name": "project_memory",
+mcp__gemini-memory__memory_query {
+  "collection": "pixel_terminal",
   "query_texts": ["<query>"],
   "n_results": 5
 }
@@ -55,7 +52,7 @@ If yes → Log memory IMMEDIATELY using the schema above.
 
 ## ⚡ Activation
 Read this file at session start.
-Announce: **Contract loaded. Using Chroma project_memory.**
+Announce: **Contract loaded. Using gemini-memory pixel_terminal.**
 
 ## 🧹 Session Hygiene
 Prune to last 20 turns if context gets heavy. Save long outputs in `./backups/` and echo paths.
