@@ -54,24 +54,30 @@ class SpriteRenderer {
     el.style.backgroundRepeat = 'no-repeat';
     el.style.backgroundPosition = '0 0';
     el.style.imageRendering = 'pixelated';
-
-    this._startLoop();
+    // Loop starts only when setStatus transitions to an active state
   }
 
   setStatus(status) {
     if (this._status === status) return;
+    const wasInactive = this._status === 'idle' || this._status === 'error';
     this._status = status;
     this._frameIdx = 0;
     this._lastTs = 0; // reset so first frame of new state doesn't skip delay
     this.el.style.backgroundPosition = '0 0'; // snap to frame 0 immediately
     this._FPS = status === 'working' ? 3 : status === 'waiting' ? 2 : 3;
+    // Restart loop when transitioning from a paused (idle/error) state
+    const isInactive = status === 'idle' || status === 'error';
+    if (wasInactive && !isInactive && !this._raf) this._startLoop();
   }
 
   _startLoop() {
     const loop = (ts) => {
+      // Self-cancel when idle/error — don't keep spinning at 60fps doing nothing
+      if (this._status === 'idle' || this._status === 'error') {
+        this._raf = null;
+        return;
+      }
       this._raf = requestAnimationFrame(loop);
-      // Idle and error: stay frozen on frame 0
-      if (this._status === 'idle' || this._status === 'error') return;
       if (ts - this._lastTs >= 1000 / this._FPS) {
         this._frameIdx = (this._frameIdx + 1) % 4;
         this.el.style.backgroundPosition = (-this._frameIdx * 40) + 'px 0';
@@ -249,12 +255,18 @@ function handleEvent(id, event) {
             ? b.content
             : JSON.stringify(b.content);
           const data = sessionLogs.get(id);
+          // tool_use always precedes tool_result — scan from end, no reverse copy needed
           const toolMsg = data
-            ? [...data.messages].reverse().find(m => m.type === 'tool' && m.toolId === b.tool_use_id)
+            ? data.messages.findLast(m => m.type === 'tool' && m.toolId === b.tool_use_id)
             : null;
           if (toolMsg) {
             toolMsg.result = resultText;
-            if (activeSessionId === id) renderMessageLog(id);
+            if (activeSessionId === id) {
+              // Targeted update: swap just the status glyph instead of rebuilding all messages
+              const log = document.getElementById('message-log');
+              const toolEl = log?.querySelector(`[data-tool-id="${b.tool_use_id}"]`);
+              if (toolEl) toolEl.querySelector('.tool-status').textContent = '✓';
+            }
           }
           delete s.toolPending[b.tool_use_id];
         }
@@ -303,7 +315,7 @@ function updateWorkingCursor(status) {
       const label = status === 'waiting' ? 'waiting' : 'working';
       cur.innerHTML = `<span class="cursor-blink">▋</span> ${label}…`;
       log.appendChild(cur);
-      log.scrollTop = log.scrollHeight;
+      scheduleScroll();
     }
   } else {
     cur?.remove();
@@ -311,6 +323,18 @@ function updateWorkingCursor(status) {
 }
 
 // ── Message log ────────────────────────────────────────────
+
+// rAF-coalesced scroll — multiple messages in one frame trigger only one reflow
+let _scrollPending = false;
+function scheduleScroll() {
+  if (_scrollPending) return;
+  _scrollPending = true;
+  requestAnimationFrame(() => {
+    _scrollPending = false;
+    const log = document.getElementById('message-log');
+    if (log) log.scrollTop = log.scrollHeight;
+  });
+}
 
 function pushMessage(id, msg) {
   const data = sessionLogs.get(id);
@@ -322,9 +346,10 @@ function pushMessage(id, msg) {
       // Insert BEFORE the working cursor so cursor stays at bottom
       const cursor = document.getElementById('working-cursor');
       const el = createMsgEl(msg);
+      el.classList.add('msg-new');
       if (cursor) log.insertBefore(el, cursor);
       else log.appendChild(el);
-      log.scrollTop = log.scrollHeight;
+      scheduleScroll();
     }
   }
 }
@@ -334,14 +359,18 @@ function renderMessageLog(id) {
   if (!log) return;
   log.innerHTML = ''; // cursor gets wiped here — restore below
   const data = sessionLogs.get(id);
-  if (!data) return;
-  for (const msg of data.messages) log.appendChild(createMsgEl(msg));
+  if (data) {
+    // DocumentFragment: build all elements off-DOM, single reflow on append
+    const frag = document.createDocumentFragment();
+    for (const msg of data.messages) frag.appendChild(createMsgEl(msg));
+    log.appendChild(frag);
+  }
   // Always restore cursor to match current session status
   const s = sessions.get(id);
   if (s && (s.status === 'working' || s.status === 'waiting')) {
     updateWorkingCursor(s.status);
   }
-  log.scrollTop = log.scrollHeight;
+  scheduleScroll();
 }
 
 function createMsgEl(msg) {
@@ -352,17 +381,23 @@ function createMsgEl(msg) {
     el.innerHTML = `<div class="msg-bubble">${esc(msg.text)}</div>`;
 
   } else if (msg.type === 'claude') {
-    // Collapse blank lines between list items → tight list (prevents marked wrapping <li> in <p>)
-    const normalized = msg.text.replace(/\n\n(?=[ \t]*(?:\d+[.)]\s|[-*+]\s))/g, '\n');
-    el.innerHTML = `<div class="msg-bubble">${mdParse(normalized)}</div>`;
+    // Cache parsed HTML — msg.text is immutable after creation
+    if (!msg._html) {
+      const normalized = msg.text.replace(/\n\n(?=[ \t]*(?:\d+[.)]\s|[-*+]\s))/g, '\n');
+      msg._html = mdParse(normalized);
+    }
+    el.innerHTML = `<div class="msg-bubble">${msg._html}</div>`;
     // Orange for the last paragraph regardless of trailing hr/empty nodes
     const paras = el.querySelectorAll('.msg-bubble p');
     if (paras.length) paras[paras.length - 1].style.color = '#e8820c';
 
   } else if (msg.type === 'tool') {
     const icon = toolIcon(msg.toolName);
-    const hint = toolHint(msg.toolName, msg.input);
+    // Cache hint — msg.input is immutable after creation
+    if (msg._hint === undefined) msg._hint = toolHint(msg.toolName, msg.input);
+    const hint = msg._hint;
     const status = msg.result !== null && msg.result !== undefined ? '✓' : '…';
+    el.dataset.toolId = msg.toolId;
     el.innerHTML = `<div class="tool-line">${icon} <span class="tool-name">${esc(msg.toolName)}</span>${hint ? ` <span class="tool-hint">${esc(hint)}</span>` : ''} <span class="tool-status">${status}</span></div>`;
 
   } else if (msg.type === 'system-msg') {
@@ -546,6 +581,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const sidebar = document.getElementById('sidebar');
   const resizeHandle = document.getElementById('sidebar-resize');
   let _resizing = false, _resizeStartX = 0, _resizeStartW = 0;
+  let _resizeRafId = null, _resizeW = 0;
   resizeHandle.addEventListener('mousedown', (e) => {
     _resizing = true;
     _resizeStartX = e.clientX;
@@ -557,12 +593,19 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   window.addEventListener('mousemove', (e) => {
     if (!_resizing) return;
-    const w = Math.max(80, Math.min(320, _resizeStartW + (e.clientX - _resizeStartX)));
-    sidebar.style.width = w + 'px';
+    _resizeW = Math.max(80, Math.min(320, _resizeStartW + (e.clientX - _resizeStartX)));
+    if (!_resizeRafId) {
+      _resizeRafId = requestAnimationFrame(() => {
+        sidebar.style.width = _resizeW + 'px';
+        _resizeRafId = null;
+      });
+    }
   });
   window.addEventListener('mouseup', () => {
     if (!_resizing) return;
     _resizing = false;
+    // Flush any pending RAF and apply the final width immediately
+    if (_resizeRafId) { cancelAnimationFrame(_resizeRafId); _resizeRafId = null; sidebar.style.width = _resizeW + 'px'; }
     resizeHandle.classList.remove('dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';

@@ -218,11 +218,15 @@ body {
 /* ── Messages — terminal line style ────────── */
 
 .msg {
-  animation: fadeIn 0.08s ease;
   font-family: var(--font);
   font-size: 13px;
   line-height: 1.4;
   width: 100%;
+}
+
+/* Only animate individually-appended messages (pushMessage path), not batch rebuilds */
+.msg-new {
+  animation: fadeIn 0.08s ease;
 }
 
 @keyframes fadeIn {
