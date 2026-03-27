@@ -36,7 +36,7 @@ const SPRITE_DATA = {
 
 const ANIMALS = ['frog', 'cat', 'rabbit', 'penguin', 'crab', 'rat', 'seal', 'snake'];
 const HUES = [0, 45, 90, 135, 180, 225, 270, 315]; // 8 maximally-spaced hue slots
-const FOLDER_COLORS_KEY = 'pixel-terminal-folder-colors';
+const FOLDER_COLORS_KEY = 'pixel-terminal-folder-colors-v2';
 
 function hashStr(s) {
   // FNV-1a with MurmurHash3 finalizer — uniform distribution across all 32 bits
