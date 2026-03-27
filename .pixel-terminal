@@ -1,0 +1,3 @@
+# Pixel Terminal source directory marker.
+# Prevents Claude sessions opened in this directory from editing app source files.
+# Do not delete — this file is checked at runtime to enforce read-only mode.

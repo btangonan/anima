@@ -92,6 +92,25 @@ class SpriteRenderer {
   }
 }
 
+// ── Self-directory detection ────────────────────────────────
+// Walks upward from cwd checking for .pixel-terminal sentinel file.
+// Prevents Claude sessions from editing Pixel Terminal's own source files.
+
+async function isSelfDirectory(cwd) {
+  let dir = cwd.replace(/\/$/, ''); // strip trailing slash
+  for (let i = 0; i < 10; i++) {
+    try {
+      const cmd = Command.create('test', ['-f', dir + '/.pixel-terminal']);
+      const out = await cmd.execute();
+      if (out.code === 0) return true;
+    } catch (_) {}
+    const parent = dir.replace(/\/[^/]+$/, '');
+    if (!parent || parent === dir) break;
+    dir = parent;
+  }
+  return false;
+}
+
 // ── Session counter (for charIndex sprite rotation) ────────
 
 let sessionCounter = 0;
@@ -111,7 +130,7 @@ let activeSessionId = null;
 
 // ── Session lifecycle ──────────────────────────────────────
 
-async function createSession(cwd) {
+async function createSession(cwd, opts = {}) {
   const id    = crypto.randomUUID();
   const name  = cwd.split('/').pop() || cwd;
   const charIndex = sessionCounter % ANIMALS.length;
@@ -124,24 +143,28 @@ async function createSession(cwd) {
     id, cwd, name, charIndex,
     status: 'idle',
     child: null,
-    toolPending: {}
+    toolPending: {},
+    readOnly: !!opts.readOnly
   };
   sessions.set(id, session);
 
   renderSessionCard(id);
   setActiveSession(id);
-  pushMessage(id, { type: 'system-msg', text: `Starting in ${cwd}…` });
+  const modeLabel = opts.readOnly ? ' (read-only)' : '';
+  pushMessage(id, { type: 'system-msg', text: `Starting in ${cwd}${modeLabel}…` });
 
   try {
     // Tauri v2: attach listeners to the Command BEFORE spawn.
     // ChildProcess (returned by spawn) only has write() + kill() — no stdout/stderr.
-    const cmd = Command.create('claude', [
+    const claudeArgs = [
       '-p',
       '--input-format',  'stream-json',
       '--output-format', 'stream-json',
       '--verbose',        // required by Claude when using --print + stream-json
       '--permission-mode', 'acceptEdits',
-    ], { cwd });
+    ];
+    if (opts.readOnly) claudeArgs.push('--disallowed-tools', 'Edit,Write,MultiEdit,NotebookEdit');
+    const cmd = Command.create('claude', claudeArgs, { cwd });
 
     // Line buffer: stdout arrives in chunks — accumulate until newline before parsing.
     let _buf = '';
@@ -536,10 +559,11 @@ function autoResize(el) {
 
 // ── Confirm modal ──────────────────────────────────────────
 
-function showConfirm(message) {
+function showConfirm(message, okLabel = 'terminate') {
   return new Promise((resolve) => {
     const overlay = document.getElementById('confirm-overlay');
     document.getElementById('confirm-msg').textContent = message;
+    document.getElementById('confirm-ok').textContent = okLabel;
     overlay.classList.remove('hidden');
 
     function onOk()    { cleanup(); resolve(true);  }
@@ -567,7 +591,17 @@ function showConfirm(message) {
 async function pickFolder() {
   try {
     const dir = await openDialog({ directory: true, multiple: false, title: 'Choose Project Folder' });
-    if (dir) await createSession(dir);
+    if (!dir) return;
+    if (await isSelfDirectory(dir)) {
+      const proceed = await showConfirm(
+        "This is Pixel Terminal's own source directory.\nEditing files here will crash all running sessions.\nProceed in read-only mode?",
+        'proceed read-only'
+      );
+      if (!proceed) return;
+      await createSession(dir, { readOnly: true });
+    } else {
+      await createSession(dir);
+    }
   } catch (err) {
     console.error('Folder picker error:', err);
   }
