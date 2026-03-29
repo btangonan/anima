@@ -1,195 +1,29 @@
 /**
- * Pixel Terminal — app.js
- * Uses Tauri global APIs (withGlobalTauri: true), no bundler needed.
- *
- * Globals available:
- *   window.__TAURI__.shell.Command
- *   window.__TAURI__.dialog.open
- *   window.marked  (from marked.umd.js)
+ * Pixel Terminal — app.js (bootstrap)
+ * Wires all modules together. No business logic lives here.
  */
 
-import { $, initDOM, esc, autoResize, mdParse, toolIcon, toolHint, showConfirm } from './dom.js';
+import { $, initDOM, autoResize, showConfirm } from './dom.js';
 import {
-  sessions, sessionLogs, spriteRenderers, SpriteRenderer,
-  getNextIdentity, getActiveSessionId, setActiveSessionId,
-  syncOmiSessions, formatTokens, IDENTITY_SEQ_KEY, isSelfDirectory
+  sessions, getActiveSessionId, IDENTITY_SEQ_KEY
 } from './session.js';
 import {
-  createSession, spawnClaude, killSession, sendMessage,
-  expandSlashCommand, warnIfUnknownCommand, pickFolder, setLifecycleDeps
+  spawnClaude, sendMessage, pickFolder,
+  expandSlashCommand, warnIfUnknownCommand, setLifecycleDeps
 } from './session-lifecycle.js';
-import { pushMessage, updateWorkingCursor, scheduleScroll, setPinToBottom, getPinToBottom, renderMessageLog } from './messages.js';
+import { pushMessage, updateWorkingCursor, setPinToBottom, renderMessageLog } from './messages.js';
 import { handleEvent, setStatus, setEventDeps } from './events.js';
-import { renderSessionCard, updateSessionCard, setActiveSession, showEmptyState, showChatView } from './cards.js';
+import { renderSessionCard, updateSessionCard, setActiveSession, showEmptyState } from './cards.js';
+import { initVoice, isSettingsOpen, setSettingsOpen, settingsUpdate } from './voice.js';
+import {
+  loadSlashCommands, getSlashCommands, showSlashMenu, hideSlashMenu,
+  moveSlashSelection, getSlashToken, getFlagToken,
+  acceptActiveSlashItem, getSlashActiveIdx
+} from './slash-menu.js';
 
-// ── Tauri globals ──────────────────────────────────────────
-
-const { Command } = window.__TAURI__.shell;
 const { invoke } = window.__TAURI__.core;
 
-
-// Event handler, status, messages, cards: moved to events.js, messages.js, cards.js
-
-// ── Slash command / flag autocomplete menu ──────────────────
-
-let _slashCommands = [];    // loaded once on startup
-let _slashActiveIdx = -1;   // keyboard-highlighted row
-let _activeToken   = null;  // token that opened the menu
-
-const FLAG_ITEMS = [
-  { name: 'seq',        description: 'sequential-thinking MCP — structured multi-step reasoning' },
-  { name: 'think',      description: 'pause and reason carefully before responding' },
-  { name: 'think-hard', description: '--think + --seq combined' },
-  { name: 'ultrathink', description: '--think-hard + explicit plan before acting' },
-  { name: 'uc',         description: 'ultra-compressed output' },
-  { name: 'no-mcp',     description: 'disable all MCP servers' },
-  { name: 'grade',      description: 'grade current plan (use with /sm:introspect)' },
-  { name: 'quick',      description: 'fast bootstrap — skip memory queries' },
-  { name: 'cold',       description: 'fresh start, skip project memory' },
-  { name: 'retro',      description: 'end-of-session retro (use with /checkpoint)' },
-  { name: 'dry-run',    description: 'show what would happen without writing' },
-  { name: 'state-only', description: 'write STATE.md only (use with /checkpoint)' },
-  { name: 'brief',      description: 'meeting/pitch brief mode (use with /research)' },
-];
-
-async function loadSlashCommands() {
-  try {
-    _slashCommands = await invoke('read_slash_commands');
-  } catch (_) {
-    _slashCommands = [];
-  }
-}
-
-function showSlashMenu(token) {
-  _activeToken = token;
-  const menu = $.slashMenu;
-  const q = token.query.toLowerCase();
-
-  let matches, prefix;
-  if (token.type === 'flag') {
-    matches = FLAG_ITEMS.filter(f =>
-      f.name.toLowerCase().includes(q) || f.description.toLowerCase().includes(q)
-    );
-    prefix = '--';
-  } else {
-    matches = _slashCommands.filter(c =>
-      c.name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)
-    );
-    prefix = '/';
-  }
-
-  if (!matches.length) { hideSlashMenu(); return; }
-
-  // Position flush against the top of the input bar, right of the sidebar
-  const inputBar = $.inputBar;
-  const sidebar  = $.sidebar;
-  const rect = inputBar.getBoundingClientRect();
-  menu.style.bottom = (window.innerHeight - rect.top) + 'px';
-  menu.style.left   = (sidebar.offsetWidth + 1) + 'px'; // +1 for resize handle
-
-  _slashActiveIdx = -1;
-  menu.innerHTML = matches.map((c, i) =>
-    `<div class="slash-item" data-idx="${i}" data-name="${esc(c.name)}">` +
-    `<span class="slash-item-name">${prefix}${esc(c.name)}</span>` +
-    `<span class="slash-item-desc">${esc(c.description)}</span>` +
-    `</div>`
-  ).join('');
-
-  menu.querySelectorAll('.slash-item').forEach(el => {
-    el.addEventListener('mousedown', (e) => {
-      e.preventDefault(); // don't blur input
-      acceptSlashItem(el.dataset.name);
-    });
-  });
-
-  menu.classList.remove('hidden');
-}
-
-function hideSlashMenu() {
-  $.slashMenu.classList.add('hidden');
-  _slashActiveIdx = -1;
-}
-
-function moveSlashSelection(delta) {
-  const menu = $.slashMenu;
-  const items = menu.querySelectorAll('.slash-item');
-  if (!items.length) return;
-  items[_slashActiveIdx]?.classList.remove('active');
-  _slashActiveIdx = Math.max(0, Math.min(items.length - 1, _slashActiveIdx + delta));
-  const active = items[_slashActiveIdx];
-  active.classList.add('active');
-  active.scrollIntoView({ block: 'nearest' });
-}
-
-// Returns { start, end, query, type:'slash' } for a /word at cursor, or null.
-// Only matches if / is at start of input or preceded by a space (not mid-URL).
-function getSlashToken(input) {
-  const val = input.value;
-  const pos = input.selectionStart;
-  let slashPos = -1;
-  for (let i = pos - 1; i >= 0; i--) {
-    if (val[i] === '/') {
-      if (i === 0 || val[i - 1] === ' ') { slashPos = i; break; }
-    } else if (val[i] === ' ') {
-      break;
-    }
-  }
-  if (slashPos === -1) return null;
-  const query = val.slice(slashPos + 1, pos);
-  if (query.includes(' ')) return null;
-  return { start: slashPos, end: pos, query, type: 'slash' };
-}
-
-// Returns { start, end, query, type:'flag' } for a --word at cursor, or null.
-// Only matches if -- is at start of input or preceded by a space.
-function getFlagToken(input) {
-  const val = input.value;
-  const pos = input.selectionStart;
-  if (pos < 2) return null;
-  let dashPos = -1;
-  for (let i = pos - 1; i >= 1; i--) {
-    if (val[i] === '-' && val[i - 1] === '-') {
-      if (i - 1 === 0 || val[i - 2] === ' ') { dashPos = i - 1; break; }
-    } else if (val[i] === ' ') {
-      break;
-    }
-  }
-  if (dashPos === -1) return null;
-  const query = val.slice(dashPos + 2, pos);
-  if (query.includes(' ') || query.startsWith('-')) return null;
-  return { start: dashPos, end: pos, query, type: 'flag' };
-}
-
-function acceptSlashItem(name) {
-  const input = $.inputField;
-  const token = _activeToken;
-  const prefix = token?.type === 'flag' ? '--' : '/';
-  if (token) {
-    const val = input.value;
-    const newVal = val.slice(0, token.start) + prefix + name + ' ' + val.slice(token.end);
-    input.value = newVal;
-    const newPos = token.start + prefix.length + name.length + 1;
-    input.setSelectionRange(newPos, newPos);
-  } else {
-    input.value = prefix + name + ' ';
-  }
-  input.focus();
-  hideSlashMenu();
-  autoResize(input);
-}
-
-function acceptActiveSlashItem() {
-  const menu = $.slashMenu;
-  const items = menu.querySelectorAll('.slash-item');
-  const idx = _slashActiveIdx >= 0 ? _slashActiveIdx : 0;
-  if (items[idx]) acceptSlashItem(items[idx].dataset.name);
-}
-
-// ── Bootstrap ──────────────────────────────────────────────
-
-// Wire lifecycle deps — these functions are defined below in this file
-// and in modules that haven't loaded yet. The setLifecycleDeps call
-// happens synchronously before any async operations.
+// ── Wire cross-module deps ────────────────────────────────
 setLifecycleDeps({
   renderSessionCard,
   setActiveSession,
@@ -198,7 +32,7 @@ setLifecycleDeps({
   handleEvent,
   updateWorkingCursor,
   showEmptyState,
-  get slashCommands() { return _slashCommands; },
+  get slashCommands() { return getSlashCommands(); },
   hideSlashMenu,
 });
 
@@ -207,15 +41,17 @@ setEventDeps({
   warnIfUnknownCommand,
 });
 
+// ── Bootstrap ─────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   initDOM();
 
   // One-time cleanup: remove stale flags that shouldn't persist across sessions
   localStorage.removeItem('alwaysOn');
   localStorage.removeItem('omiListening');
-  localStorage.removeItem(IDENTITY_SEQ_KEY); // reset sprite sequence on each app launch
+  localStorage.removeItem(IDENTITY_SEQ_KEY);
 
   loadSlashCommands();
+  initVoice();
 
   // Animate working badge: per-session phase cycles "" "." ".." "..." every 400ms
   setInterval(() => {
@@ -228,7 +64,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }, 400);
 
-  // Open links in system browser — prevent Tauri webview from navigating away
+  // Open links in system browser
   $.messageLog.addEventListener('click', (e) => {
     const link = e.target.closest('a[href]');
     if (!link) return;
@@ -238,12 +74,12 @@ window.addEventListener('DOMContentLoaded', () => {
     window.__TAURI__.opener.openUrl(href);
   });
 
-  // Track whether user has scrolled up — suppress auto-scroll if so
+  // Track scroll position
   $.messageLog.addEventListener('scroll', () => {
     setPinToBottom($.messageLog.scrollTop + $.messageLog.clientHeight >= $.messageLog.scrollHeight - 40);
   });
 
-  // Sidebar resize
+  // ── Sidebar resize ──────────────────────────────────────
   const sidebar = $.sidebar;
   const resizeHandle = $.sidebarResize;
   let _resizing = false, _resizeStartX = 0, _resizeStartW = 0;
@@ -270,14 +106,13 @@ window.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('mouseup', () => {
     if (!_resizing) return;
     _resizing = false;
-    // Flush any pending RAF and apply the final width immediately
     if (_resizeRafId) { cancelAnimationFrame(_resizeRafId); _resizeRafId = null; sidebar.style.width = _resizeW + 'px'; }
     resizeHandle.classList.remove('dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
   });
 
-  // Sidebar vertical resize (session list ↕ voice log)
+  // Sidebar vertical resize (session list / voice log)
   const sessionList = $.sessionList;
   const hResizeHandle = $.sidebarHResize;
   let _hResizing = false, _hStartY = 0, _hStartH = 0;
@@ -312,37 +147,34 @@ window.addEventListener('DOMContentLoaded', () => {
     document.body.style.userSelect = '';
     localStorage.setItem('sidebar-session-list-h', _hH);
   });
-  // Restore saved height
   const _savedH = localStorage.getItem('sidebar-session-list-h');
   if (_savedH) { sessionList.style.flex = 'none'; sessionList.style.height = _savedH + 'px'; }
 
+  // ── Button wiring ───────────────────────────────────────
   $.btnNewSession.addEventListener('click', pickFolder);
-  showEmptyState(); // input disabled until first session opens
+  showEmptyState();
 
   $.btnSend.addEventListener('click', () => {
-    const input = $.inputField;
-    const text = input.value;
+    const text = $.inputField.value;
     if (!text.trim() || !getActiveSessionId()) return;
-    input.value = '';
-    input.style.height = ''; // reset to rows="1" — avoids WebKit scrollHeight=0 collapse
+    $.inputField.value = '';
+    $.inputField.style.height = '';
     setPinToBottom(true);
     hideSlashMenu();
     sendMessage(getActiveSessionId(), text);
   });
 
+  // ── Input handling ──────────────────────────────────────
   $.inputField.addEventListener('keydown', (e) => {
     const menuVisible = !$.slashMenu.classList.contains('hidden');
     if (menuVisible) {
       if (e.key === 'ArrowDown')  { e.preventDefault(); moveSlashSelection(1); return; }
       if (e.key === 'ArrowUp')    { e.preventDefault(); moveSlashSelection(-1); return; }
-      if (e.key === 'Tab') {
+      if (e.key === 'Tab') { e.preventDefault(); acceptActiveSlashItem(); return; }
+      if (e.key === 'Enter' && !e.shiftKey && getSlashActiveIdx() >= 0) {
         e.preventDefault(); acceptActiveSlashItem(); return;
       }
-      if (e.key === 'Enter' && !e.shiftKey && _slashActiveIdx >= 0) {
-        // Only accept if user explicitly navigated to an item with arrow keys
-        e.preventDefault(); acceptActiveSlashItem(); return;
-      }
-      if (e.key === 'Escape')     { e.preventDefault(); hideSlashMenu(); return; }
+      if (e.key === 'Escape') { e.preventDefault(); hideSlashMenu(); return; }
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -359,14 +191,10 @@ window.addEventListener('DOMContentLoaded', () => {
   $.inputField.addEventListener('input', (e) => {
     autoResize(e.target);
     const token = getSlashToken(e.target) || getFlagToken(e.target);
-    if (token) {
-      showSlashMenu(token);
-    } else {
-      hideSlashMenu();
-    }
+    if (token) { showSlashMenu(token); } else { hideSlashMenu(); }
   });
 
-  // Click outside slash menu → close it
+  // Click outside slash menu
   document.addEventListener('mousedown', (e) => {
     if (!$.slashMenu.classList.contains('hidden') &&
         !$.slashMenu.contains(e.target) && e.target !== $.inputField) {
@@ -374,13 +202,13 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // ── Keyboard shortcuts ──────────────────────────────────
   // Esc — cancel active Claude operation
-  // Guards (in priority order): slash menu, confirm modal, settings panel
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!$.slashMenu.classList.contains('hidden')) return; // slash menu: handled by its own listener
-    if (!$.confirmOverlay?.classList.contains('hidden')) return; // confirm modal: has its own Esc handler
-    if (settingsOpen) { settingsOpen = false; _settingsUpdate(); return; } // close settings panel, don't kill Claude
+    if (!$.slashMenu.classList.contains('hidden')) return;
+    if (!$.confirmOverlay?.classList.contains('hidden')) return;
+    if (isSettingsOpen()) { setSettingsOpen(false); settingsUpdate(); return; }
     if (getActiveSessionId()) {
       const s = sessions.get(getActiveSessionId());
       if (s && s.child && (s.status === 'working' || s.status === 'waiting')) {
@@ -407,252 +235,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ── Omi voice bridge ───────────────────────────────────────
-  // Listens for voice commands from OmiWebhook via the Rust WebSocket bridge.
-  // "hey pixel, <text> full stop" → sendMessage to targeted session.
-  // Dot = clickable toggle. Green=listening, amber=muted, gray=disconnected.
-
-  const { listen: tauriListen } = window.__TAURI__.event;
-
-  let omiConnected = false;
-  let omiListening = true; // always start listening — don't restore mute from storage
-  // voiceSource declared here so _omiIndicatorUpdate can read it
-  let voiceSource = localStorage.getItem('voiceSource') || 'ble';
-
-  function _omiIndicatorUpdate() {
-    if (!$.omiIndicator) return;
-    $.omiIndicator.classList.remove('connected');
-    if (omiConnected) {
-      $.omiIndicator.classList.add('connected');
-      $.omiIndicator.title = 'Omi connected — click for settings (fn = push to talk)';
-    } else {
-      $.omiIndicator.title = 'Omi voice bridge disconnected — click for settings';
-    }
-  }
-
-  function toggleOmiListening() {
-    omiListening = !omiListening;
-    _omiIndicatorUpdate();
-    try { invoke('set_omi_listening', { enabled: omiListening }); } catch (_) {}
-  }
-
-  $.omiIndicator?.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    if (omiConnected) {
-      // Already connected — flash status
-      _showDotStatus('Voice bridge connected');
-    } else {
-      // Launch the voice bridge via launch.command
-      const home = await window.__TAURI__.path.homeDir();
-      const script = `${home}Projects/pixel-terminal/launch.command`;
-      Command.create('open', [script]).execute().catch(() => {
-        _showDotStatus('Run launch.command to connect');
-      });
-    }
-  });
-
-  function _showDotStatus(msg) {
-    if (!$.omiIndicator) return;
-    const prev = $.omiIndicator.title;
-    $.omiIndicator.title = msg;
-    setTimeout(() => { $.omiIndicator.title = prev; }, 2500);
-  }
-
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'O') {
-      e.preventDefault();
-      toggleOmiListening();
-    }
-  });
-
-  function resolveSession(ref) {
-    if (ref == null) return getActiveSessionId();
-    if (typeof ref === 'number') {
-      const keys = [...sessions.keys()];
-      return keys[ref - 1] || getActiveSessionId();
-    }
-    const needle = String(ref).toLowerCase();
-    for (const [id, s] of sessions) {
-      if (s.name.toLowerCase().includes(needle)) return id;
-    }
-    return getActiveSessionId();
-  }
-
-  tauriListen('omi:command', (event) => {
-    const { type, text, session, ts, dispatched } = event.payload;
-
-    // Transcript events only show in voice log when bridge is connected (green dot)
-    if (type === 'transcript') {
-      if (omiConnected && omiListening) appendVoiceLog(text, ts, dispatched);
-      return;
-    }
-
-    if (!omiListening) return;  // JS-side mute guard — commands only
-
-    const targetId = resolveSession(session ?? null);
-    if (!targetId) return;
-    if (type === 'prompt') {
-      sendMessage(targetId, text);
-    } else if (type === 'switch') {
-      setActiveSession(targetId);
-    } else if (type === 'list_sessions') {
-      const lines = [...sessions.entries()]
-        .map(([_, s], i) => `${i + 1}. ${s.name} [${s.status}]`)
-        .join('\n');
-      pushMessage(getActiveSessionId(), { type: 'system-msg', text: `Omi sessions:\n${lines}` });
-    }
-  });
-
-  // ── Voice log (transcript sidebar) ────────────────────────
-  const MAX_VOICE_LOG = 200;
-
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
-
-  function appendVoiceLog(text, ts, dispatched) {
-    if (!$.voiceLog || !text) return;
-    const entry = document.createElement('div');
-    entry.className = 'voice-entry' + (dispatched ? ' dispatched' : '');
-    entry.innerHTML = `<span class="ts">${escapeHtml(ts || '')}</span>${dispatched ? '▶ ' : ''}${escapeHtml(text)}`;
-    $.voiceLog.appendChild(entry);
-    while ($.voiceLog.children.length > MAX_VOICE_LOG) $.voiceLog.removeChild($.voiceLog.firstChild);
-    $.voiceLog.scrollTop = $.voiceLog.scrollHeight;
-  }
-
-  $.btnClearVoiceLog?.addEventListener('click', () => {
-    if ($.voiceLog) $.voiceLog.innerHTML = '';
-  });
-
-  tauriListen('omi:connected', () => {
-    omiConnected = true;
-    _omiIndicatorUpdate();
-    // Re-send current mute state so a reconnecting OmiWebhook stays in sync
-    try { invoke('set_omi_listening', { enabled: omiListening }); } catch (_) {}
-    // Always sync voice mode on reconnect (trigger_mode unless OPEN was clicked this session)
-    try { invoke('set_voice_mode', { mode: alwaysOn ? 'always_on' : 'trigger_mode' }); } catch (_) {}
-  });
-
-  tauriListen('omi:disconnected', () => {
-    omiConnected = false;
-    _omiIndicatorUpdate();
-  });
-
-  // ── Always-on mic toggle ───────────────────────────────────
-  // When active, pixel_voice_bridge skips "hey pixel" trigger —
-  // every transcribed utterance (3s silence timeout) is sent as a command.
-
-  let alwaysOn = false; // PTT-only: never restore always-on from storage — fn key is the activation path
-
-  function _alwaysOnUpdate() {
-    if (!$.alwaysOnBtn) return;
-    if (alwaysOn) {
-      $.alwaysOnBtn.classList.add('active');
-      $.alwaysOnBtn.title = 'Always-on mic active — click to return to trigger mode (Ctrl+Shift+A)';
-    } else {
-      $.alwaysOnBtn.classList.remove('active');
-      $.alwaysOnBtn.title = 'Always-on mic off — no "hey pixel" needed when on (Ctrl+Shift+A)';
-    }
-  }
-
-  function toggleAlwaysOn() {
-    alwaysOn = !alwaysOn;
-    _alwaysOnUpdate();
-    try { invoke('set_voice_mode', { mode: alwaysOn ? 'always_on' : 'trigger_mode' }); } catch (_) {}
-  }
-
-  $.alwaysOnBtn?.addEventListener('click', toggleAlwaysOn);
-
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'A') {
-      e.preventDefault();
-      toggleAlwaysOn();
-    }
-  });
-
-  _alwaysOnUpdate(); // restore persisted state on load
-
-  // ── fn key PTT (push-to-talk) ────────────────────────────────────────────
-  // Hold fn → bridge starts transcribing (ptt_start). Dot pulses.
-  // Release fn → bridge fires gathered buffer immediately (ptt_release).
-  // Right Option (AltRight) is a fallback if fn is intercepted by macOS.
-  // PTT is independent of alwaysOn — does not modify that flag.
-  let pttActive = false;
-
-  function _isPttKey(e) {
-    return e.key === 'Fn' || e.code === 'Fn' || e.code === 'AltRight';
-  }
-
-  function _pttIndicatorUpdate() {
-    if (!$.omiIndicator) return;
-    if (pttActive) {
-      $.omiIndicator.classList.add('ptt');
-    } else {
-      $.omiIndicator.classList.remove('ptt');
-    }
-  }
-
-  document.addEventListener('keydown', (e) => {
-    if (!_isPttKey(e)) return;
-    if (pttActive) return;     // already recording
-    if (!omiConnected) return; // no bridge
-    pttActive = true;
-    try { invoke('ptt_start'); } catch (_) {}
-    _pttIndicatorUpdate();
-  });
-
-  document.addEventListener('keyup', (e) => {
-    if (!_isPttKey(e)) return;
-    if (!pttActive) return;
-    pttActive = false;
-    try { invoke('ptt_release'); } catch (_) {}
-    _pttIndicatorUpdate();
-  });
-
-  // ── Voice settings panel ────────────────────────────────────────────────
-  let settingsOpen = false;
-
-  function _settingsUpdate() {
-    if (!$.settingsPanel) return;
-    $.settingsPanel.classList.toggle('hidden', !settingsOpen);
-    $.settingsBtn?.classList.toggle('open', settingsOpen);
-    $.voiceSourceBle?.classList.toggle('active', voiceSource === 'ble');
-    $.voiceSourceMic?.classList.toggle('active', voiceSource === 'mic');
-  }
-
-  $.settingsBtn?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    settingsOpen = !settingsOpen;
-    _settingsUpdate();
-  });
-
-  document.addEventListener('click', () => {
-    if (settingsOpen) { settingsOpen = false; _settingsUpdate(); }
-  });
-
-  $.settingsPanel?.addEventListener('click', (e) => {
-    e.stopPropagation(); // prevent panel click from closing itself
-  });
-
-  function _switchVoiceSource(source) {
-    voiceSource = source;
-    localStorage.setItem('voiceSource', voiceSource);
-    _settingsUpdate();
-    _omiIndicatorUpdate();  // refresh dot color (blue=BLE, green=mic)
-    const label = source === 'ble' ? 'BLE pendant' : 'Mac mic';
-    appendVoiceLog(`Switching to ${label} — reconnecting...`, new Date().toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}), false);
-    try { invoke('switch_voice_source', { source }); } catch (_) {}
-  }
-
-  $.voiceSourceBle?.addEventListener('click', () => _switchVoiceSource('ble'));
-  $.voiceSourceMic?.addEventListener('click', () => _switchVoiceSource('mic'));
-
-  _settingsUpdate(); // restore persisted state on load
-
-  // Window close (red X) — HTML confirm modal
+  // ── Window close ────────────────────────────────────────
   const appWindow = window.__TAURI__.window.getCurrentWindow();
   let _forceClose = false;
   appWindow.onCloseRequested(async (event) => {
@@ -672,7 +255,8 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // About dialog — triggered by Rust menu event
+  // ── About dialog ────────────────────────────────────────
+  const { listen: tauriListen } = window.__TAURI__.event;
   $.aboutClose?.addEventListener('click', () => {
     $.aboutOverlay?.classList.add('hidden');
   });
