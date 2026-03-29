@@ -568,3 +568,53 @@ canvas.sprite-canvas {
 ::-webkit-scrollbar { width: 3px; height: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-hi); }
+
+/* ── Omi voice bridge indicator / toggle ─── */
+#omi-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-mute);
+  display: inline-block;
+  flex-shrink: 0;
+  align-self: center;
+  margin-left: 6px;
+  transition: background 0.4s, box-shadow 0.4s;
+  /* button reset */
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+#omi-indicator.connected {
+  background: #39ff14;
+  box-shadow: 0 0 5px #39ff14aa;
+}
+#omi-indicator.connected.muted {
+  background: #f5a623;
+  box-shadow: 0 0 4px #f5a62366;
+}
+
+/* ── Always-on mic toggle ─── */
+#always-on-btn {
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-mute);
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  padding: 1px 4px;
+  flex-shrink: 0;
+  align-self: center;
+  margin-left: 5px;
+  cursor: pointer;
+  transition: color 0.3s, box-shadow 0.3s, opacity 0.3s;
+  opacity: 0.4;
+}
+#always-on-btn:hover { opacity: 0.7; }
+#always-on-btn.active {
+  color: #39ff14;
+  box-shadow: 0 0 5px #39ff1488;
+  opacity: 1;
+}

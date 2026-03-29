@@ -1,5 +1,8 @@
 use std::fs;
 
+mod ws_bridge;
+use ws_bridge::{set_omi_listening, set_voice_mode, sync_omi_sessions};
+
 #[derive(serde::Serialize)]
 struct SlashCommand {
     name: String,
@@ -122,7 +125,17 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_slash_commands, read_slash_command_content])
+        .setup(|app| {
+            ws_bridge::init(app)?;
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            read_slash_commands,
+            read_slash_command_content,
+            sync_omi_sessions,
+            set_omi_listening,
+            set_voice_mode
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

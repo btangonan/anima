@@ -148,6 +148,17 @@ const spriteRenderers = new Map();
 
 let activeSessionId = null;
 
+// Notify the Rust WebSocket bridge of current session state.
+// Called on create/kill/switch so OmiWebhook can route "session N" commands.
+async function syncOmiSessions() {
+  const data = [...sessions.entries()].map(([id, s], i) => ({
+    id, name: s.name, index: i + 1, status: s.status,
+  }));
+  try {
+    await invoke('sync_omi_sessions', { sessions: data, active: activeSessionId });
+  } catch (_) { /* bridge not available — ignore */ }
+}
+
 // ── Session lifecycle ──────────────────────────────────────
 
 async function createSession(cwd, opts = {}) {
@@ -179,6 +190,7 @@ async function createSession(cwd, opts = {}) {
 
   spawnClaude(id); // fire-and-forget — all handling is callback-based
   setStatus(id, 'waiting'); // static "waiting…" during init — no rotating words until user sends
+  syncOmiSessions();
   return id;
 }
 
@@ -251,6 +263,7 @@ function killSession(id) {
       showEmptyState();
     }
   }
+  syncOmiSessions();
 }
 
 // Returns true and shows a warning if text looks like an unrecognized slash command.
@@ -680,6 +693,7 @@ function setActiveSession(id) {
   const s = sessions.get(id);
   if (s) updateWorkingCursor(s.status);
   document.getElementById('msg-input')?.focus();
+  syncOmiSessions();
 }
 
 // ── View helpers ───────────────────────────────────────────
@@ -1095,6 +1109,131 @@ window.addEventListener('DOMContentLoaded', () => {
       if (target) setActiveSession(target);
     }
   });
+
+  // ── Omi voice bridge ───────────────────────────────────────
+  // Listens for voice commands from OmiWebhook via the Rust WebSocket bridge.
+  // "hey pixel, <text> full stop" → sendMessage to targeted session.
+  // Dot = clickable toggle. Green=listening, amber=muted, gray=disconnected.
+
+  const { listen: tauriListen } = window.__TAURI__.event;
+
+  // Listening toggle state — persists across restarts
+  let omiConnected = false;
+  let omiListening = localStorage.getItem('omiListening') !== 'false';
+
+  function _omiIndicatorUpdate() {
+    const el = document.getElementById('omi-indicator');
+    if (!el) return;
+    if (!omiConnected) {
+      el.classList.remove('connected', 'muted');
+      el.title = 'Omi voice bridge (disconnected)';
+    } else if (!omiListening) {
+      el.classList.add('connected', 'muted');
+      el.title = 'Omi muted — click to resume (Ctrl+Shift+O)';
+    } else {
+      el.classList.add('connected');
+      el.classList.remove('muted');
+      el.title = 'Omi listening — click to mute (Ctrl+Shift+O)';
+    }
+  }
+
+  function toggleOmiListening() {
+    omiListening = !omiListening;
+    localStorage.setItem('omiListening', omiListening);
+    _omiIndicatorUpdate();
+    try { invoke('set_omi_listening', { enabled: omiListening }); } catch (_) {}
+  }
+
+  document.getElementById('omi-indicator')?.addEventListener('click', toggleOmiListening);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'O') {
+      e.preventDefault();
+      toggleOmiListening();
+    }
+  });
+
+  function resolveSession(ref) {
+    if (ref == null) return activeSessionId;
+    if (typeof ref === 'number') {
+      const keys = [...sessions.keys()];
+      return keys[ref - 1] || activeSessionId;
+    }
+    const needle = String(ref).toLowerCase();
+    for (const [id, s] of sessions) {
+      if (s.name.toLowerCase().includes(needle)) return id;
+    }
+    return activeSessionId;
+  }
+
+  tauriListen('omi:command', (event) => {
+    if (!omiListening) return;  // JS-side guard (belt-and-suspenders vs Rust mute)
+    const { type, text, session } = event.payload;
+    const targetId = resolveSession(session ?? null);
+    if (!targetId) return;
+    if (type === 'prompt') {
+      sendMessage(targetId, text);
+    } else if (type === 'switch') {
+      setActiveSession(targetId);
+    } else if (type === 'list_sessions') {
+      const lines = [...sessions.entries()]
+        .map(([_, s], i) => `${i + 1}. ${s.name} [${s.status}]`)
+        .join('\n');
+      pushMessage(activeSessionId, { type: 'system-msg', text: `Omi sessions:\n${lines}` });
+    }
+  });
+
+  tauriListen('omi:connected', () => {
+    omiConnected = true;
+    _omiIndicatorUpdate();
+    // Re-send current mute state so a reconnecting OmiWebhook stays in sync
+    try { invoke('set_omi_listening', { enabled: omiListening }); } catch (_) {}
+    // Re-send always-on state if active
+    if (alwaysOn) {
+      try { invoke('set_voice_mode', { mode: 'always_on' }); } catch (_) {}
+    }
+  });
+
+  tauriListen('omi:disconnected', () => {
+    omiConnected = false;
+    _omiIndicatorUpdate();
+  });
+
+  // ── Always-on mic toggle ───────────────────────────────────
+  // When active, pixel_voice_bridge skips "hey pixel" trigger —
+  // every transcribed utterance (3s silence timeout) is sent as a command.
+
+  let alwaysOn = localStorage.getItem('alwaysOn') === 'true';
+
+  function _alwaysOnUpdate() {
+    const el = document.getElementById('always-on-btn');
+    if (!el) return;
+    if (alwaysOn) {
+      el.classList.add('active');
+      el.title = 'Always-on mic active — click to return to trigger mode (Ctrl+Shift+A)';
+    } else {
+      el.classList.remove('active');
+      el.title = 'Always-on mic off — no "hey pixel" needed when on (Ctrl+Shift+A)';
+    }
+  }
+
+  function toggleAlwaysOn() {
+    alwaysOn = !alwaysOn;
+    localStorage.setItem('alwaysOn', alwaysOn);
+    _alwaysOnUpdate();
+    try { invoke('set_voice_mode', { mode: alwaysOn ? 'always_on' : 'trigger_mode' }); } catch (_) {}
+  }
+
+  document.getElementById('always-on-btn')?.addEventListener('click', toggleAlwaysOn);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+      e.preventDefault();
+      toggleAlwaysOn();
+    }
+  });
+
+  _alwaysOnUpdate(); // restore persisted state on load
 
   // Window close (red X) — HTML confirm modal
   const appWindow = window.__TAURI__.window.getCurrentWindow();
