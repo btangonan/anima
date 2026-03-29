@@ -8,13 +8,13 @@
  *   window.marked  (from marked.umd.js)
  */
 
-// ── Tauri + marked globals ─────────────────────────────────
+import { $, initDOM, esc, autoResize, mdParse, toolIcon, toolHint, showConfirm } from './dom.js';
+
+// ── Tauri globals ──────────────────────────────────────────
 
 const { Command } = window.__TAURI__.shell;
 const { open: openDialog } = window.__TAURI__.dialog;
 const { invoke } = window.__TAURI__.core;
-const { parse: mdParse } = window.marked;
-window.marked.setOptions({ breaks: true, gfm: true });
 
 // ── Sprite data (inlined — eliminates all load/protocol issues) ──────────
 const SPRITE_DATA = {
@@ -408,8 +408,7 @@ function handleEvent(id, event) {
             toolMsg.result = resultText;
             if (activeSessionId === id) {
               // Targeted update: swap just the status glyph instead of rebuilding all messages
-              const log = document.getElementById('message-log');
-              const toolEl = log?.querySelector(`[data-tool-id="${b.tool_use_id}"]`);
+              const toolEl = $.messageLog?.querySelector(`[data-tool-id="${b.tool_use_id}"]`);
               if (toolEl) {
                 toolEl.querySelector('.tool-status').textContent = '✓';
               }
@@ -507,14 +506,13 @@ let _workingTimer = null;
 let _workingMsgIdx = 0;
 
 function updateWorkingCursor(status) {
-  const log = document.getElementById('message-log');
-  if (!log) return;
+  if (!$.messageLog) return;
   let cur = document.getElementById('working-cursor');
   if (status === 'working') {
     if (!cur) {
       cur = document.createElement('div');
       cur.id = 'working-cursor';
-      log.appendChild(cur);
+      $.messageLog.appendChild(cur);
       scheduleScroll();
     }
     // Build cursor structure once, update text node only — avoid innerHTML re-parsing every 3s
@@ -551,8 +549,7 @@ function scheduleScroll(force = false) {
   _scrollPending = true;
   requestAnimationFrame(() => {
     _scrollPending = false;
-    const log = document.getElementById('message-log');
-    if (log) log.lastElementChild?.scrollIntoView({ block: 'end' });
+    if ($.messageLog) $.messageLog.lastElementChild?.scrollIntoView({ block: 'end' });
   });
 }
 
@@ -561,29 +558,27 @@ function pushMessage(id, msg) {
   if (!data) return;
   data.messages.push(msg);
   if (activeSessionId === id) {
-    const log = document.getElementById('message-log');
-    if (log) {
+    if ($.messageLog) {
       // Insert BEFORE the working cursor so cursor stays at bottom
       const cursor = document.getElementById('working-cursor');
       const el = createMsgEl(msg);
       el.classList.add('msg-new');
-      if (cursor) log.insertBefore(el, cursor);
-      else log.appendChild(el);
+      if (cursor) $.messageLog.insertBefore(el, cursor);
+      else $.messageLog.appendChild(el);
       scheduleScroll();
     }
   }
 }
 
 function renderMessageLog(id) {
-  const log = document.getElementById('message-log');
-  if (!log) return;
-  log.innerHTML = ''; // cursor gets wiped here — restore below
+  if (!$.messageLog) return;
+  $.messageLog.innerHTML = ''; // cursor gets wiped here — restore below
   const data = sessionLogs.get(id);
   if (data) {
     // DocumentFragment: build all elements off-DOM, single reflow on append
     const frag = document.createDocumentFragment();
     for (const msg of data.messages) frag.appendChild(createMsgEl(msg));
-    log.appendChild(frag);
+    $.messageLog.appendChild(frag);
   }
   // Always restore cursor to match current session status
   const s = sessions.get(id);
@@ -671,7 +666,7 @@ function renderSessionCard(id) {
     const ok = await showConfirm(`Terminate "${s.name}"? This will end the session.`);
     if (ok) killSession(id);
   });
-  document.getElementById('session-list').appendChild(card);
+  $.sessionList.appendChild(card);
 
   // Attach sprite renderer to the wrap div
   const wrap = document.getElementById(`card-sprite-wrap-${id}`);
@@ -720,14 +715,14 @@ function setActiveSession(id) {
   renderMessageLog(id);
   const s = sessions.get(id);
   if (s) updateWorkingCursor(s.status);
-  document.getElementById('msg-input')?.focus();
+  $.inputField?.focus();
   syncOmiSessions();
 }
 
 // ── View helpers ───────────────────────────────────────────
 
 function showEmptyState() {
-  document.getElementById('message-log').innerHTML = '';
+  $.messageLog.innerHTML = '';
 }
 
 function showChatView() {
@@ -735,77 +730,6 @@ function showChatView() {
 }
 
 
-// ── Util ───────────────────────────────────────────────────
-
-function esc(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function toolIcon(name = '') {
-  return '·';
-}
-
-function toolHint(name, inputStr) {
-  try {
-    const obj = JSON.parse(inputStr);
-    const n = name.toLowerCase();
-    // File/path tools
-    if (obj.file_path) return obj.file_path.replace(/.*\//, '');
-    if (obj.path) return obj.path.replace(/.*\//, '');
-    if (obj.pattern) return obj.pattern;
-    if (obj.command) return String(obj.command).slice(0, 60);
-    // Memory tools
-    if (obj.query_texts) return obj.query_texts[0]?.slice(0, 50);
-    if (obj.collection && obj.documents) return obj.collection;
-    // Web
-    if (obj.url) return obj.url.replace(/^https?:\/\//, '').slice(0, 50);
-    if (obj.query) return String(obj.query).slice(0, 50);
-    // Figma
-    if (obj.node_id) return `node:${obj.node_id}`;
-    if (obj.name) return String(obj.name).slice(0, 50);
-    // Generic: first string value
-    const first = Object.values(obj).find(v => typeof v === 'string');
-    return first ? first.slice(0, 50) : '';
-  } catch (_) {
-    return String(inputStr || '').slice(0, 50);
-  }
-}
-
-function autoResize(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-}
-
-// ── Confirm modal ──────────────────────────────────────────
-
-function showConfirm(message, okLabel = 'terminate') {
-  return new Promise((resolve) => {
-    const overlay = document.getElementById('confirm-overlay');
-    document.getElementById('confirm-msg').textContent = message;
-    document.getElementById('confirm-ok').textContent = okLabel;
-    overlay.classList.remove('hidden');
-
-    function onOk()    { cleanup(); resolve(true);  }
-    function onCancel(){ cleanup(); resolve(false); }
-    function onKey(e)  {
-      if (e.key === 'Enter')  { e.preventDefault(); onOk(); }
-      if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
-    }
-
-    function cleanup() {
-      overlay.classList.add('hidden');
-      document.getElementById('confirm-ok').removeEventListener('click', onOk);
-      document.getElementById('confirm-cancel').removeEventListener('click', onCancel);
-      window.removeEventListener('keydown', onKey);
-    }
-
-    document.getElementById('confirm-ok').addEventListener('click', onOk);
-    document.getElementById('confirm-cancel').addEventListener('click', onCancel);
-    window.addEventListener('keydown', onKey);
-  });
-}
 
 // ── Folder picker ──────────────────────────────────────────
 
@@ -860,7 +784,7 @@ async function loadSlashCommands() {
 
 function showSlashMenu(token) {
   _activeToken = token;
-  const menu = document.getElementById('slash-menu');
+  const menu = $.slashMenu;
   const q = token.query.toLowerCase();
 
   let matches, prefix;
@@ -879,8 +803,8 @@ function showSlashMenu(token) {
   if (!matches.length) { hideSlashMenu(); return; }
 
   // Position flush against the top of the input bar, right of the sidebar
-  const inputBar = document.getElementById('input-bar');
-  const sidebar  = document.getElementById('sidebar');
+  const inputBar = $.inputBar;
+  const sidebar  = $.sidebar;
   const rect = inputBar.getBoundingClientRect();
   menu.style.bottom = (window.innerHeight - rect.top) + 'px';
   menu.style.left   = (sidebar.offsetWidth + 1) + 'px'; // +1 for resize handle
@@ -904,12 +828,12 @@ function showSlashMenu(token) {
 }
 
 function hideSlashMenu() {
-  document.getElementById('slash-menu').classList.add('hidden');
+  $.slashMenu.classList.add('hidden');
   _slashActiveIdx = -1;
 }
 
 function moveSlashSelection(delta) {
-  const menu = document.getElementById('slash-menu');
+  const menu = $.slashMenu;
   const items = menu.querySelectorAll('.slash-item');
   if (!items.length) return;
   items[_slashActiveIdx]?.classList.remove('active');
@@ -959,7 +883,7 @@ function getFlagToken(input) {
 }
 
 function acceptSlashItem(name) {
-  const input = document.getElementById('msg-input');
+  const input = $.inputField;
   const token = _activeToken;
   const prefix = token?.type === 'flag' ? '--' : '/';
   if (token) {
@@ -977,7 +901,7 @@ function acceptSlashItem(name) {
 }
 
 function acceptActiveSlashItem() {
-  const menu = document.getElementById('slash-menu');
+  const menu = $.slashMenu;
   const items = menu.querySelectorAll('.slash-item');
   const idx = _slashActiveIdx >= 0 ? _slashActiveIdx : 0;
   if (items[idx]) acceptSlashItem(items[idx].dataset.name);
@@ -986,6 +910,7 @@ function acceptActiveSlashItem() {
 // ── Bootstrap ──────────────────────────────────────────────
 
 window.addEventListener('DOMContentLoaded', () => {
+  initDOM();
 
   // One-time cleanup: remove stale flags that shouldn't persist across sessions
   localStorage.removeItem('alwaysOn');
@@ -1006,7 +931,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }, 400);
 
   // Open links in system browser — prevent Tauri webview from navigating away
-  document.getElementById('message-log').addEventListener('click', (e) => {
+  $.messageLog.addEventListener('click', (e) => {
     const link = e.target.closest('a[href]');
     if (!link) return;
     const href = link.getAttribute('href');
@@ -1016,14 +941,13 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   // Track whether user has scrolled up — suppress auto-scroll if so
-  document.getElementById('message-log').addEventListener('scroll', () => {
-    const log = document.getElementById('message-log');
-    _pinToBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
+  $.messageLog.addEventListener('scroll', () => {
+    _pinToBottom = $.messageLog.scrollTop + $.messageLog.clientHeight >= $.messageLog.scrollHeight - 40;
   });
 
   // Sidebar resize
-  const sidebar = document.getElementById('sidebar');
-  const resizeHandle = document.getElementById('sidebar-resize');
+  const sidebar = $.sidebar;
+  const resizeHandle = $.sidebarResize;
   let _resizing = false, _resizeStartX = 0, _resizeStartW = 0;
   let _resizeRafId = null, _resizeW = 0;
   resizeHandle.addEventListener('mousedown', (e) => {
@@ -1056,8 +980,8 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   // Sidebar vertical resize (session list ↕ voice log)
-  const sessionList = document.getElementById('session-list');
-  const hResizeHandle = document.getElementById('sidebar-h-resize');
+  const sessionList = $.sessionList;
+  const hResizeHandle = $.sidebarHResize;
   let _hResizing = false, _hStartY = 0, _hStartH = 0;
   let _hRafId = null, _hH = 0;
   hResizeHandle.addEventListener('mousedown', (e) => {
@@ -1094,11 +1018,11 @@ window.addEventListener('DOMContentLoaded', () => {
   const _savedH = localStorage.getItem('sidebar-session-list-h');
   if (_savedH) { sessionList.style.flex = 'none'; sessionList.style.height = _savedH + 'px'; }
 
-  document.getElementById('btn-new-session').addEventListener('click', pickFolder);
+  $.btnNewSession.addEventListener('click', pickFolder);
   showEmptyState(); // input disabled until first session opens
 
-  document.getElementById('btn-send').addEventListener('click', () => {
-    const input = document.getElementById('msg-input');
+  $.btnSend.addEventListener('click', () => {
+    const input = $.inputField;
     const text = input.value;
     if (!text.trim() || !activeSessionId) return;
     input.value = '';
@@ -1108,8 +1032,8 @@ window.addEventListener('DOMContentLoaded', () => {
     sendMessage(activeSessionId, text);
   });
 
-  document.getElementById('msg-input').addEventListener('keydown', (e) => {
-    const menuVisible = !document.getElementById('slash-menu').classList.contains('hidden');
+  $.inputField.addEventListener('keydown', (e) => {
+    const menuVisible = !$.slashMenu.classList.contains('hidden');
     if (menuVisible) {
       if (e.key === 'ArrowDown')  { e.preventDefault(); moveSlashSelection(1); return; }
       if (e.key === 'ArrowUp')    { e.preventDefault(); moveSlashSelection(-1); return; }
@@ -1124,18 +1048,17 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      const input = document.getElementById('msg-input');
-      const text = input.value;
+      const text = $.inputField.value;
       if (!text.trim() || !activeSessionId) return;
-      input.value = '';
-      input.style.height = '';
+      $.inputField.value = '';
+      $.inputField.style.height = '';
       _pinToBottom = true;
       hideSlashMenu();
       sendMessage(activeSessionId, text);
     }
   });
 
-  document.getElementById('msg-input').addEventListener('input', (e) => {
+  $.inputField.addEventListener('input', (e) => {
     autoResize(e.target);
     const token = getSlashToken(e.target) || getFlagToken(e.target);
     if (token) {
@@ -1147,10 +1070,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Click outside slash menu → close it
   document.addEventListener('mousedown', (e) => {
-    const menu = document.getElementById('slash-menu');
-    const input = document.getElementById('msg-input');
-    if (!menu.classList.contains('hidden') &&
-        !menu.contains(e.target) && e.target !== input) {
+    if (!$.slashMenu.classList.contains('hidden') &&
+        !$.slashMenu.contains(e.target) && e.target !== $.inputField) {
       hideSlashMenu();
     }
   });
@@ -1159,8 +1080,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // Guards (in priority order): slash menu, confirm modal, settings panel
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!document.getElementById('slash-menu').classList.contains('hidden')) return; // slash menu: handled by its own listener
-    if (!document.getElementById('confirm-overlay')?.classList.contains('hidden')) return; // confirm modal: has its own Esc handler
+    if (!$.slashMenu.classList.contains('hidden')) return; // slash menu: handled by its own listener
+    if (!$.confirmOverlay?.classList.contains('hidden')) return; // confirm modal: has its own Esc handler
     if (settingsOpen) { settingsOpen = false; _settingsUpdate(); return; } // close settings panel, don't kill Claude
     if (activeSessionId) {
       const s = sessions.get(activeSessionId);
@@ -1201,14 +1122,13 @@ window.addEventListener('DOMContentLoaded', () => {
   let voiceSource = localStorage.getItem('voiceSource') || 'ble';
 
   function _omiIndicatorUpdate() {
-    const el = document.getElementById('omi-indicator');
-    if (!el) return;
-    el.classList.remove('connected');
+    if (!$.omiIndicator) return;
+    $.omiIndicator.classList.remove('connected');
     if (omiConnected) {
-      el.classList.add('connected');
-      el.title = 'Omi connected — click for settings (fn = push to talk)';
+      $.omiIndicator.classList.add('connected');
+      $.omiIndicator.title = 'Omi connected — click for settings (fn = push to talk)';
     } else {
-      el.title = 'Omi voice bridge disconnected — click for settings';
+      $.omiIndicator.title = 'Omi voice bridge disconnected — click for settings';
     }
   }
 
@@ -1218,9 +1138,8 @@ window.addEventListener('DOMContentLoaded', () => {
     try { invoke('set_omi_listening', { enabled: omiListening }); } catch (_) {}
   }
 
-  document.getElementById('omi-indicator')?.addEventListener('click', async (e) => {
+  $.omiIndicator?.addEventListener('click', async (e) => {
     e.stopPropagation();
-    const el = document.getElementById('omi-indicator');
     if (omiConnected) {
       // Already connected — flash status
       _showDotStatus('Voice bridge connected');
@@ -1235,11 +1154,10 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   function _showDotStatus(msg) {
-    const el = document.getElementById('omi-indicator');
-    if (!el) return;
-    const prev = el.title;
-    el.title = msg;
-    setTimeout(() => { el.title = prev; }, 2500);
+    if (!$.omiIndicator) return;
+    const prev = $.omiIndicator.title;
+    $.omiIndicator.title = msg;
+    setTimeout(() => { $.omiIndicator.title = prev; }, 2500);
   }
 
   document.addEventListener('keydown', (e) => {
@@ -1298,19 +1216,17 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function appendVoiceLog(text, ts, dispatched) {
-    const log = document.getElementById('voice-log');
-    if (!log || !text) return;
+    if (!$.voiceLog || !text) return;
     const entry = document.createElement('div');
     entry.className = 'voice-entry' + (dispatched ? ' dispatched' : '');
     entry.innerHTML = `<span class="ts">${escapeHtml(ts || '')}</span>${dispatched ? '▶ ' : ''}${escapeHtml(text)}`;
-    log.appendChild(entry);
-    while (log.children.length > MAX_VOICE_LOG) log.removeChild(log.firstChild);
-    log.scrollTop = log.scrollHeight;
+    $.voiceLog.appendChild(entry);
+    while ($.voiceLog.children.length > MAX_VOICE_LOG) $.voiceLog.removeChild($.voiceLog.firstChild);
+    $.voiceLog.scrollTop = $.voiceLog.scrollHeight;
   }
 
-  document.getElementById('btn-clear-voice-log')?.addEventListener('click', () => {
-    const log = document.getElementById('voice-log');
-    if (log) log.innerHTML = '';
+  $.btnClearVoiceLog?.addEventListener('click', () => {
+    if ($.voiceLog) $.voiceLog.innerHTML = '';
   });
 
   tauriListen('omi:connected', () => {
@@ -1334,14 +1250,13 @@ window.addEventListener('DOMContentLoaded', () => {
   let alwaysOn = false; // PTT-only: never restore always-on from storage — fn key is the activation path
 
   function _alwaysOnUpdate() {
-    const el = document.getElementById('always-on-btn');
-    if (!el) return;
+    if (!$.alwaysOnBtn) return;
     if (alwaysOn) {
-      el.classList.add('active');
-      el.title = 'Always-on mic active — click to return to trigger mode (Ctrl+Shift+A)';
+      $.alwaysOnBtn.classList.add('active');
+      $.alwaysOnBtn.title = 'Always-on mic active — click to return to trigger mode (Ctrl+Shift+A)';
     } else {
-      el.classList.remove('active');
-      el.title = 'Always-on mic off — no "hey pixel" needed when on (Ctrl+Shift+A)';
+      $.alwaysOnBtn.classList.remove('active');
+      $.alwaysOnBtn.title = 'Always-on mic off — no "hey pixel" needed when on (Ctrl+Shift+A)';
     }
   }
 
@@ -1351,7 +1266,7 @@ window.addEventListener('DOMContentLoaded', () => {
     try { invoke('set_voice_mode', { mode: alwaysOn ? 'always_on' : 'trigger_mode' }); } catch (_) {}
   }
 
-  document.getElementById('always-on-btn')?.addEventListener('click', toggleAlwaysOn);
+  $.alwaysOnBtn?.addEventListener('click', toggleAlwaysOn);
 
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'A') {
@@ -1374,12 +1289,11 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function _pttIndicatorUpdate() {
-    const el = document.getElementById('omi-indicator');
-    if (!el) return;
+    if (!$.omiIndicator) return;
     if (pttActive) {
-      el.classList.add('ptt');
+      $.omiIndicator.classList.add('ptt');
     } else {
-      el.classList.remove('ptt');
+      $.omiIndicator.classList.remove('ptt');
     }
   }
 
@@ -1404,18 +1318,14 @@ window.addEventListener('DOMContentLoaded', () => {
   let settingsOpen = false;
 
   function _settingsUpdate() {
-    const panel = document.getElementById('settings-panel');
-    const btn = document.getElementById('settings-btn');
-    const bleBtn = document.getElementById('voice-source-ble');
-    const micBtn = document.getElementById('voice-source-mic');
-    if (!panel) return;
-    panel.classList.toggle('hidden', !settingsOpen);
-    btn?.classList.toggle('open', settingsOpen);
-    bleBtn?.classList.toggle('active', voiceSource === 'ble');
-    micBtn?.classList.toggle('active', voiceSource === 'mic');
+    if (!$.settingsPanel) return;
+    $.settingsPanel.classList.toggle('hidden', !settingsOpen);
+    $.settingsBtn?.classList.toggle('open', settingsOpen);
+    $.voiceSourceBle?.classList.toggle('active', voiceSource === 'ble');
+    $.voiceSourceMic?.classList.toggle('active', voiceSource === 'mic');
   }
 
-  document.getElementById('settings-btn')?.addEventListener('click', (e) => {
+  $.settingsBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
     settingsOpen = !settingsOpen;
     _settingsUpdate();
@@ -1425,7 +1335,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (settingsOpen) { settingsOpen = false; _settingsUpdate(); }
   });
 
-  document.getElementById('settings-panel')?.addEventListener('click', (e) => {
+  $.settingsPanel?.addEventListener('click', (e) => {
     e.stopPropagation(); // prevent panel click from closing itself
   });
 
@@ -1439,8 +1349,8 @@ window.addEventListener('DOMContentLoaded', () => {
     try { invoke('switch_voice_source', { source }); } catch (_) {}
   }
 
-  document.getElementById('voice-source-ble')?.addEventListener('click', () => _switchVoiceSource('ble'));
-  document.getElementById('voice-source-mic')?.addEventListener('click', () => _switchVoiceSource('mic'));
+  $.voiceSourceBle?.addEventListener('click', () => _switchVoiceSource('ble'));
+  $.voiceSourceMic?.addEventListener('click', () => _switchVoiceSource('mic'));
 
   _settingsUpdate(); // restore persisted state on load
 
@@ -1465,14 +1375,13 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   // About dialog — triggered by Rust menu event
-  const aboutOverlay = document.getElementById('about-overlay');
-  document.getElementById('about-close')?.addEventListener('click', () => {
-    aboutOverlay?.classList.add('hidden');
+  $.aboutClose?.addEventListener('click', () => {
+    $.aboutOverlay?.classList.add('hidden');
   });
-  aboutOverlay?.addEventListener('click', (e) => {
-    if (e.target === aboutOverlay) aboutOverlay.classList.add('hidden');
+  $.aboutOverlay?.addEventListener('click', (e) => {
+    if (e.target === $.aboutOverlay) $.aboutOverlay.classList.add('hidden');
   });
   tauriListen('show-about', () => {
-    aboutOverlay?.classList.remove('hidden');
+    $.aboutOverlay?.classList.remove('hidden');
   });
 });
