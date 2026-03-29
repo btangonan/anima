@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <!-- background -->
+  <rect width="16" height="16" fill="#181818"/>
+
+  <!-- salmon glyphs row 2 -->
+  <rect x="2" y="2" width="4" height="1" fill="#db7656"/>
+  <rect x="11" y="2" width="4" height="1" fill="#db7656"/>
+  <!-- row 3 -->
+  <rect x="2" y="3" width="1" height="1" fill="#db7656"/>
+  <rect x="5" y="3" width="1" height="1" fill="#db7656"/>
+  <rect x="7" y="3" width="1" height="1" fill="#db7656"/>
+  <rect x="9" y="3" width="1" height="1" fill="#db7656"/>
+  <rect x="11" y="3" width="1" height="1" fill="#db7656"/>
+  <!-- row 4 -->
+  <rect x="2" y="4" width="4" height="1" fill="#db7656"/>
+  <rect x="8" y="4" width="1" height="1" fill="#db7656"/>
+  <rect x="11" y="4" width="1" height="1" fill="#db7656"/>
+  <!-- row 5 -->
+  <rect x="2" y="5" width="1" height="1" fill="#db7656"/>
+  <rect x="7" y="5" width="1" height="1" fill="#db7656"/>
+  <rect x="9" y="5" width="1" height="1" fill="#db7656"/>
+  <rect x="11" y="5" width="4" height="1" fill="#db7656"/>
+
+  <!-- near-black outline -->
+  <rect x="7" y="7" width="4" height="1" fill="#161620"/>
+  <rect x="5" y="8" width="2" height="1" fill="#161620"/>
+  <rect x="11" y="8" width="1" height="1" fill="#161620"/>
+  <rect x="4" y="9" width="1" height="1" fill="#161620"/>
+  <rect x="12" y="9" width="1" height="1" fill="#161620"/>
+  <rect x="3" y="10" width="1" height="1" fill="#161620"/>
+  <rect x="7" y="10" width="1" height="1" fill="#161620"/>
+  <rect x="11" y="10" width="2" height="1" fill="#161620"/>
+  <rect x="2" y="11" width="1" height="1" fill="#161620"/>
+  <rect x="12" y="11" width="1" height="1" fill="#161620"/>
+  <rect x="2" y="12" width="1" height="1" fill="#161620"/>
+  <rect x="11" y="12" width="1" height="1" fill="#161620"/>
+  <rect x="1" y="13" width="1" height="1" fill="#161620"/>
+  <rect x="5" y="13" width="1" height="1" fill="#161620"/>
+  <rect x="8" y="13" width="2" height="1" fill="#161620"/>
+  <rect x="12" y="13" width="1" height="1" fill="#161620"/>
+
+  <!-- green body — mid -->
+  <rect x="7" y="8" width="4" height="1" fill="#719b52"/>
+  <rect x="6" y="9" width="1" height="1" fill="#719b52"/>
+  <rect x="8" y="9" width="1" height="1" fill="#719b52"/>
+  <rect x="4" y="11" width="2" height="1" fill="#719b52"/>
+  <rect x="6" y="12" width="1" height="1" fill="#719b52"/>
+  <rect x="3" y="12" width="1" height="1" fill="#719b52"/>
+
+  <!-- green body — bright -->
+  <rect x="9" y="9" width="2" height="1" fill="#80bf54"/>
+  <rect x="9" y="10" width="1" height="1" fill="#80bf54"/>
+  <rect x="6" y="11" width="5" height="1" fill="#80bf54"/>
+  <rect x="6" y="13" width="1" height="1" fill="#4e8a27"/>
+
+  <!-- green body — dark -->
+  <rect x="5" y="9" width="1" height="1" fill="#5e883e"/>
+  <rect x="4" y="10" width="2" height="1" fill="#5e883e"/>
+  <rect x="3" y="11" width="1" height="1" fill="#5e883e"/>
+  <rect x="4" y="12" width="2" height="1" fill="#5e883e"/>
+  <rect x="2" y="13" width="2" height="1" fill="#3f7e14"/>
+  <rect x="4" y="13" width="1" height="1" fill="#488d18"/>
+  <rect x="7" y="13" width="1" height="1" fill="#3f7e14"/>
+  <rect x="10" y="13" width="2" height="1" fill="#3f7e14"/>
+
+  <!-- eyes — white -->
+  <rect x="7" y="9" width="1" height="1" fill="#ffffff"/>
+  <rect x="11" y="9" width="1" height="1" fill="#ffffff"/>
+  <rect x="6" y="10" width="1" height="1" fill="#ffffff"/>
+  <rect x="8" y="10" width="1" height="1" fill="#ffffff"/>
+  <rect x="10" y="10" width="1" height="1" fill="#ffffff"/>
+  <rect x="7" y="11" width="1" height="1" fill="#ffffff"/>
+  <rect x="11" y="11" width="1" height="1" fill="#ffffff"/>
+
+  <!-- eyes — pupil -->
+  <rect x="7" y="10" width="1" height="1" fill="#161620"/>
+
+  <!-- belly — light yellow -->
+  <rect x="8" y="12" width="3" height="1" fill="#e1eaa0"/>
+  <!-- belly — mid yellow -->
+  <rect x="7" y="12" width="1" height="1" fill="#c5d272"/>
+</svg>

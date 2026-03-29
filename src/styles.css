@@ -81,12 +81,36 @@ body {
 }
 #sidebar-resize:hover, #sidebar-resize.dragging { background: var(--border-hi); }
 
+#sidebar-h-resize {
+  height: 1px;
+  min-height: 1px;
+  background: var(--border);
+  cursor: ns-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.1s;
+}
+#sidebar-h-resize::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: -4px; bottom: -4px;
+}
+#sidebar-h-resize:hover, #sidebar-h-resize.dragging { background: var(--border-hi); }
+
 #sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 6px 8px 5px;
   border-bottom: 1px solid var(--border);
+  gap: 6px;
+}
+#app-logo {
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
 }
 
 #btn-new-session {
@@ -107,9 +131,8 @@ body {
 #btn-new-session:hover { border-color: var(--accent); }
 
 #session-list {
-  /* flex: 1 replaced — shares sidebar with voice-log */
   flex: 1 1 60%;
-  min-height: 80px;
+  min-height: 0;        /* critical: allows flex item to shrink below content size */
   overflow-y: auto;
   padding: 4px 3px;
   display: flex;
@@ -609,9 +632,9 @@ canvas.sprite-canvas {
   margin-left: 5px;
   cursor: pointer;
   transition: color 0.3s, opacity 0.3s;
-  opacity: 0.4;
+  opacity: 0.65;
 }
-#always-on-btn:hover { opacity: 0.7; }
+#always-on-btn:hover { opacity: 0.9; }
 #always-on-btn.active {
   color: #39ff14;
   opacity: 1;
@@ -641,7 +664,7 @@ canvas.sprite-canvas {
 #btn-clear-voice-log:hover { opacity: 1; }
 #voice-log {
   flex: 1 1 40%;
-  min-height: 60px;
+  min-height: 0;        /* allows flex item to shrink below content size */
   overflow-y: auto;
   padding: 5px 8px;
   font-family: var(--font-mono, monospace);
@@ -676,7 +699,7 @@ canvas.sprite-canvas {
   flex-shrink: 0;
   align-self: center;
   cursor: pointer;
-  opacity: 0.4;
+  opacity: 0.65;
   transition: opacity 0.2s;
 }
 #settings-btn:hover { opacity: 0.9; }

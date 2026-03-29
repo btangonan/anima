@@ -1057,6 +1057,45 @@ window.addEventListener('DOMContentLoaded', () => {
     document.body.style.userSelect = '';
   });
 
+  // Sidebar vertical resize (session list ↕ voice log)
+  const sessionList = document.getElementById('session-list');
+  const hResizeHandle = document.getElementById('sidebar-h-resize');
+  let _hResizing = false, _hStartY = 0, _hStartH = 0;
+  let _hRafId = null, _hH = 0;
+  hResizeHandle.addEventListener('mousedown', (e) => {
+    _hResizing = true;
+    _hStartY = e.clientY;
+    _hStartH = sessionList.offsetHeight;
+    hResizeHandle.classList.add('dragging');
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!_hResizing) return;
+    const sidebarH = sidebar.offsetHeight;
+    _hH = Math.max(60, Math.min(sidebarH - 120, _hStartH + (e.clientY - _hStartY)));
+    if (!_hRafId) {
+      _hRafId = requestAnimationFrame(() => {
+        sessionList.style.flex = 'none';
+        sessionList.style.height = _hH + 'px';
+        _hRafId = null;
+      });
+    }
+  });
+  window.addEventListener('mouseup', () => {
+    if (!_hResizing) return;
+    _hResizing = false;
+    if (_hRafId) { cancelAnimationFrame(_hRafId); _hRafId = null; sessionList.style.height = _hH + 'px'; }
+    hResizeHandle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    localStorage.setItem('sidebar-session-list-h', _hH);
+  });
+  // Restore saved height
+  const _savedH = localStorage.getItem('sidebar-session-list-h');
+  if (_savedH) { sessionList.style.flex = 'none'; sessionList.style.height = _savedH + 'px'; }
+
   document.getElementById('btn-new-session').addEventListener('click', pickFolder);
   showEmptyState(); // input disabled until first session opens
 
