@@ -61,7 +61,15 @@
           ></textarea>
           <button id="btn-send" title="Send (Enter)">▶</button>
           <button id="omi-indicator" title="Omi voice bridge (disconnected)" aria-label="Toggle Omi listening"></button>
-          <button id="always-on-btn" title="Always-on mic — no trigger word needed (Ctrl+Shift+A)" aria-label="Toggle always-on mic">OPEN</button>
+          <button id="always-on-btn" title="Always-on mode — transcribes everything. Hold fn for push-to-talk instead. (Ctrl+Shift+A)" aria-label="Toggle always-on mic">OPEN</button>
+          <button id="settings-btn" title="Voice settings">⚙</button>
+          <div id="settings-panel" class="hidden">
+            <div class="settings-row">
+              <span class="pixel-label">MIC SOURCE</span>
+              <button id="voice-source-ble" class="source-btn" title="Use Omi BLE pendant">BLE</button>
+              <button id="voice-source-mic" class="source-btn" title="Use MacBook Pro Microphone">MIC</button>
+            </div>
+          </div>
         </div>
       </div>
 

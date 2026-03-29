@@ -117,9 +117,11 @@ async fn handle_client<R: tauri::Runtime>(
             let _ = tx.send(ao_msg.to_string());
         }
 
-        if was_empty {
-            let _ = app.emit("omi:connected", ());
-        }
+        // Always emit omi:connected — JS may have missed the first event due to
+        // a race between the WS server binding and the webview listener registering.
+        // omiConnected = true in app.js is idempotent.
+        let _ = app.emit("omi:connected", ());
+        let _ = was_empty; // suppress unused variable warning
     }
 
     // Write task: drain channel → WS sink
@@ -193,6 +195,40 @@ pub async fn set_voice_mode(
 ) -> Result<(), String> {
     state.always_on.store(mode == "always_on", Ordering::SeqCst);
     let msg = serde_json::json!({ "type": mode });
+    state.broadcast(&msg.to_string()).await;
+    Ok(())
+}
+
+/// Tauri command: called from app.js on fn key press.
+/// Broadcasts ptt_start to all voice bridge clients — bridge begins transcribing.
+#[tauri::command]
+pub async fn ptt_start(
+    state: tauri::State<'_, OmiBridgeState>,
+) -> Result<(), String> {
+    let msg = serde_json::json!({ "type": "ptt_start" });
+    state.broadcast(&msg.to_string()).await;
+    Ok(())
+}
+
+/// Tauri command: called from app.js on fn key release.
+/// Broadcasts ptt_release to all voice bridge clients — bridge fires gathered buffer immediately.
+#[tauri::command]
+pub async fn ptt_release(
+    state: tauri::State<'_, OmiBridgeState>,
+) -> Result<(), String> {
+    let msg = serde_json::json!({ "type": "ptt_release" });
+    state.broadcast(&msg.to_string()).await;
+    Ok(())
+}
+
+/// Tauri command: called from app.js settings panel to switch voice source (ble/mic).
+/// Bridge handles by raising SwitchSource exception → clean restart with new mode.
+#[tauri::command]
+pub async fn switch_voice_source(
+    state: tauri::State<'_, OmiBridgeState>,
+    source: String,
+) -> Result<(), String> {
+    let msg = serde_json::json!({ "type": "switch_source", "source": source });
     state.broadcast(&msg.to_string()).await;
     Ok(())
 }

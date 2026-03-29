@@ -216,6 +216,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
 }
 
 /* ── Message Log ─────────────────────────── */
@@ -432,6 +433,7 @@ body {
   border-top: 1px solid var(--border);
   background: var(--bg);
   flex-shrink: 0;
+  position: relative;
 }
 
 #msg-input {
@@ -576,24 +578,19 @@ canvas.sprite-canvas {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--text-mute);
+  background: #f5c542;              /* yellow = disconnected */
   display: inline-block;
   flex-shrink: 0;
   align-self: center;
   margin-left: 6px;
-  transition: background 0.4s, box-shadow 0.4s;
+  transition: background 0.4s;
   /* button reset */
   border: none;
   padding: 0;
   cursor: pointer;
 }
 #omi-indicator.connected {
-  background: #39ff14;
-  box-shadow: 0 0 5px #39ff14aa;
-}
-#omi-indicator.connected.muted {
-  background: #f5a623;
-  box-shadow: 0 0 4px #f5a62366;
+  background: #4fa3ff;              /* blue = connected, fn not held */
 }
 
 /* ── Always-on mic toggle ─── */
@@ -611,13 +608,12 @@ canvas.sprite-canvas {
   align-self: center;
   margin-left: 5px;
   cursor: pointer;
-  transition: color 0.3s, box-shadow 0.3s, opacity 0.3s;
+  transition: color 0.3s, opacity 0.3s;
   opacity: 0.4;
 }
 #always-on-btn:hover { opacity: 0.7; }
 #always-on-btn.active {
   color: #39ff14;
-  box-shadow: 0 0 5px #39ff1488;
   opacity: 1;
 }
 
@@ -665,3 +661,65 @@ canvas.sprite-canvas {
 }
 .voice-entry.dispatched { color: var(--text); }
 .voice-entry.dispatched .ts { opacity: 0.9; }
+
+/* ── Settings panel hidden state ─── */
+#settings-panel.hidden { display: none; }
+
+/* ── Settings button + panel ─── */
+#settings-btn {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-mute);
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  align-self: center;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.2s;
+}
+#settings-btn:hover { opacity: 0.9; }
+#settings-btn.open { opacity: 1; color: var(--text); }
+
+#settings-panel {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 10px;
+  background: var(--bg-hi, #1a1a1a);
+  border: 1px solid var(--border-hi, #333);
+  border-radius: 3px;
+  padding: 8px 10px;
+  z-index: 200;
+  min-width: 160px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.source-btn {
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-mute);
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  padding: 1px 5px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: color 0.2s, opacity 0.2s;
+}
+.source-btn:hover { opacity: 0.8; }
+.source-btn.active {
+  color: #39ff14;
+  opacity: 1;
+}
+
+/* ── PTT recording state — omi-indicator turns green ─── */
+#omi-indicator.ptt {
+  background: #39ff14;              /* green = fn held, listening */
+}
+

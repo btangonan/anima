@@ -1,7 +1,7 @@
 use std::fs;
 
 mod ws_bridge;
-use ws_bridge::{set_omi_listening, set_voice_mode, sync_omi_sessions};
+use ws_bridge::{ptt_release, ptt_start, set_omi_listening, set_voice_mode, switch_voice_source, sync_omi_sessions};
 
 #[derive(serde::Serialize)]
 struct SlashCommand {
@@ -134,7 +134,10 @@ pub fn run() {
             read_slash_command_content,
             sync_omi_sessions,
             set_omi_listening,
-            set_voice_mode
+            set_voice_mode,
+            ptt_start,
+            ptt_release,
+            switch_voice_source
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
