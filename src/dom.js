@@ -33,6 +33,10 @@ export function initDOM() {
   $.voiceSourceBle = document.getElementById('voice-source-ble');
   $.voiceSourceMic = document.getElementById('voice-source-mic');
   $.inputBar = document.getElementById('input-bar');
+  // History panel
+  $.historyView = document.getElementById('history-view');
+  $.historyList = document.getElementById('history-list');
+  $.historySearch = document.getElementById('history-search');
 }
 
 export function esc(str) {

@@ -1,6 +1,7 @@
 // ── Session cards + switching ──────────────────────────────
 
 import { $, esc, showConfirm } from './dom.js';
+import { exitHistoryView } from './history.js';
 import {
   sessions, sessionLogs, spriteRenderers, SpriteRenderer,
   getActiveSessionId, setActiveSessionId, formatTokens, syncOmiSessions
@@ -72,6 +73,7 @@ export function updateSessionCard(id) {
 }
 
 export function setActiveSession(id) {
+  exitHistoryView();
   const prev = getActiveSessionId();
   setActiveSessionId(id);
   setPinToBottom(true);

@@ -23,6 +23,8 @@ let _deps = {
   showEmptyState: null,
   slashCommands: [],
   hideSlashMenu: null,
+  exitHistoryView: null,
+  scanHistory: null,
 };
 
 export function setLifecycleDeps(deps) {
@@ -61,6 +63,7 @@ async function createSession(cwd, opts = {}) {
   spawnClaude(id); // fire-and-forget — all handling is callback-based
   _deps.setStatus(id, 'waiting'); // static "waiting…" during init — no rotating words until user sends
   syncOmiSessions();
+  if (_deps.scanHistory) _deps.scanHistory(cwd);
   return id;
 }
 
@@ -75,7 +78,7 @@ async function spawnClaude(id) {
       '--input-format',  'stream-json',
       '--output-format', 'stream-json',
       '--verbose',
-      '--permission-mode', 'acceptEdits',
+      '--permission-mode', 'bypassPermissions',
     ];
     if (s.readOnly) claudeArgs.push('--disallowed-tools', 'Edit,Write,MultiEdit,NotebookEdit,Bash');
     const cmd = Command.create('claude', claudeArgs, { cwd: s.cwd });
@@ -197,9 +200,18 @@ async function sendMessage(id, text) {
     content = [{ type: 'text', text: expanded }];
     for (const att of staged) {
       if (att.isImage) {
+        // Include original dimensions and path in the message.
+        // Dimensions are pre-computed from the canvas before resize — they are the REAL file dimensions.
+        // The base64 preview is resized to ≤1568px so Claude should NOT infer dimensions from the blob.
+        // Path is included for tool use (read file, further analysis) but macOS filenames may contain
+        // Unicode spaces (U+202F narrow no-break space in "10:45 AM") — use glob/find if direct open fails.
+        const dimStr = (att.originalWidth && att.originalHeight)
+          ? ` | original dimensions: ${att.originalWidth}×${att.originalHeight}px`
+          : '';
+        content[0].text += `\n\n[Attached image: ${att.name}${dimStr} | path: ${att.path}]`;
         content.push({ type: 'image', source: { type: 'base64', media_type: att.mimeType, data: att.data } });
       } else {
-        content.push({ type: 'text', text: `\n\n[Attached file: ${att.name}]\n${att.data}` });
+        content.push({ type: 'text', text: `\n\n[Attached file: ${att.name} | path: ${att.path}]\n${att.data}` });
       }
     }
     markAttachmentsSent(id);

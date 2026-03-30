@@ -1,28 +1,30 @@
 # STATE.md — Working State (re-read after compaction)
-## Updated: 2026-03-28 01:45
+## Updated: 2026-03-30 08:45
 
 ### Active Work
-- Sprite identity system: round-robin sequencer, 9 animals × 4 hues = 36 combos
-- k-whale shifted 1px up (k-whale-shifted.png → SPRITE_DATA, commit 18290a2)
-- Per-animal hue subsetting: still pending
+- Character selection order fix COMPLETE: 0-degree originals first (shuffled), hue variants second (shuffled)
+- All P0+P1 performance parity fixes COMPLETE
 
 ### Key IDs
 - Collection: pixel_terminal (gemini-memory)
-- localStorage key: 'pixel-terminal-identity-seq-v7'
-- ANIMALS: ['cat','rabbit','penguin','rat','seal','snake','k-whale','cat2','frog2']
-- HUES: [0, 120, 195, 270]
+- localStorage key: 'pixel-terminal-identity-seq-v8'
 
 ### Decisions This Session
-- k-whale sprite shifted 1px up via Pillow paste(src,(0,-1)) on transparent canvas
-- frog2 → frog3.png, penguin → penguin2.png (previous commit 911223c)
-- All sprites verified byte-exact before commit
+- Character selection: BASE_ANIMAL_COUNT=12, shuffle base then hue per cycle, stored as seq[] in localStorage
+- bypassPermissions required for -p pipeline mode
+- content_block_delta/start/stop handlers + rAF for streaming
+- Image dims pre-computed from canvas before resize
+- Production .app PATH fix deferred to packaging
 
 ### Blockers
-- Per-animal hue subsetting not yet implemented
+- Production .app PATH: needs $SHELL -l -c env on launch (defer until app packaging)
 
 ### Last Session Snapshot
-Date: 2026-03-28
+Date: 2026-03-30
 Open actions:
-- [ ] Per-animal hue subsets — context: ANIMAL_HUES map, each animal cycles only its picker-selected hues
-Decisions: 46 | Fixes: 37
-Next: → implement ANIMAL_HUES map in getNextIdentity()
+- [x] Character selection order — 0-hue first per cycle, shuffled within each group ✓
+- [ ] Production PATH fix — context: get_shell_path() Rust + cached invoke; only needed for .app distribution
+- [ ] Full A/B test: drop image, ask dimensions → verify instant answer, zero Bash commands
+- [ ] Per-animal hue subsets (ANIMAL_HUES) — carried from prior sessions *(auto-recovered)*
+Decisions: 7 | Fixes: 5
+Next: → test new character selection by opening multiple sessions; verify original-color animals appear before any hue variants

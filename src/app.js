@@ -11,7 +11,7 @@ import {
   spawnClaude, sendMessage, pickFolder,
   expandSlashCommand, warnIfUnknownCommand, setLifecycleDeps
 } from './session-lifecycle.js';
-import { pushMessage, updateWorkingCursor, setPinToBottom, renderMessageLog } from './messages.js';
+import { pushMessage, updateWorkingCursor, setPinToBottom, renderMessageLog, createMsgEl } from './messages.js';
 import { handleEvent, setStatus, setEventDeps } from './events.js';
 import { renderSessionCard, updateSessionCard, setActiveSession, showEmptyState } from './cards.js';
 import { initVoice, isSettingsOpen, setSettingsOpen, settingsUpdate } from './voice.js';
@@ -21,6 +21,7 @@ import {
   moveSlashSelection, getSlashToken, getFlagToken,
   acceptActiveSlashItem, getSlashActiveIdx
 } from './slash-menu.js';
+import { setHistoryDeps, initHistory, scanHistory, exitHistoryView } from './history.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -35,11 +36,20 @@ setLifecycleDeps({
   showEmptyState,
   get slashCommands() { return getSlashCommands(); },
   hideSlashMenu,
+  exitHistoryView,
+  scanHistory,
 });
 
 setEventDeps({
   expandSlashCommand,
   warnIfUnknownCommand,
+});
+
+setHistoryDeps({
+  renderMessageLog,
+  createMsgEl,
+  sessions,
+  getActiveSessionId,
 });
 
 // ── Bootstrap ─────────────────────────────────────────────
@@ -54,6 +64,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadSlashCommands();
   initVoice();
   initAttachments({ getActiveSessionId });
+  initHistory();
 
   // Animate working badge: per-session phase cycles "" "." ".." "..." every 400ms
   setInterval(() => {
