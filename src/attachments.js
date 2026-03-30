@@ -58,6 +58,45 @@ function isImagePath(path) {
   return IMAGE_EXTS.has(ext);
 }
 
+// ── Image resize ─────────────────────────────────────────
+// Claude recommends images ≤ 1568px on the longest side.
+// A raw 4K screenshot is ~11MB base64; after resize it's ~200-400KB.
+// We always output JPEG (for compression) unless the image is tiny already.
+
+const CLAUDE_MAX_PX = 1568;
+
+function resizeImageBase64(b64, mimeType) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const { naturalWidth: w, naturalHeight: h } = img;
+      const longest = Math.max(w, h);
+
+      // Already within limits and not too large — keep as-is (preserve transparency for PNG)
+      if (longest <= CLAUDE_MAX_PX) {
+        resolve({ b64, mimeType });
+        return;
+      }
+
+      const scale = CLAUDE_MAX_PX / longest;
+      const nw = Math.round(w * scale);
+      const nh = Math.round(h * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width  = nw;
+      canvas.height = nh;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, nw, nh);
+
+      const outMime = 'image/jpeg';
+      const dataUrl = canvas.toDataURL(outMime, 0.85);
+      resolve({ b64: dataUrl.split(',')[1], mimeType: outMime });
+    };
+    img.onerror = () => resolve({ b64, mimeType }); // fallback: send as-is
+    img.src = `data:${mimeType};base64,${b64}`;
+  });
+}
+
 // ── Stage a file from its filesystem path (Tauri drop) ────
 
 async function stageFilePath(sessionId, path) {
@@ -66,9 +105,16 @@ async function stageFilePath(sessionId, path) {
   const mimeType = guessMimeType(name);
 
   let data;
+  let finalMimeType = mimeType;
   try {
     if (isImage) {
-      data = await invoke('read_file_as_base64', { path });
+      const raw = await invoke('read_file_as_base64', { path });
+      // Resize to Claude's recommended max (1568px) before sending.
+      // A raw 4K screenshot is ~11MB base64 and reliably hits rate limits.
+      // After resize it's typically 200-400KB — same result, 25-50× smaller request.
+      const resized = await resizeImageBase64(raw, mimeType);
+      data = resized.b64;
+      finalMimeType = resized.mimeType;
     } else {
       data = await invoke('read_file_as_text', { path });
     }
@@ -81,7 +127,7 @@ async function stageFilePath(sessionId, path) {
     id: crypto.randomUUID(),
     name,
     path,
-    mimeType,
+    mimeType: finalMimeType,
     data,
     isImage,
     status: 'staged',
