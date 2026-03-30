@@ -48,7 +48,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // One-time cleanup: remove stale flags that shouldn't persist across sessions
   localStorage.removeItem('alwaysOn');
   localStorage.removeItem('omiListening');
-  localStorage.removeItem(IDENTITY_SEQ_KEY);
+  localStorage.setItem(IDENTITY_SEQ_KEY, JSON.stringify({ idx: Math.floor(Math.random() * 1000) }));
 
   loadSlashCommands();
   initVoice();

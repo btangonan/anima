@@ -55,6 +55,7 @@ async function createSession(cwd, opts = {}) {
   _deps.setActiveSession(id);
   const modeLabel = opts.readOnly ? ' (read-only)' : '';
   _deps.pushMessage(id, { type: 'system-msg', text: `Starting in ${cwd}${modeLabel}…` });
+  _deps.pushMessage(id, { type: 'system-msg', text: 'Awaiting instructions' });
 
   spawnClaude(id); // fire-and-forget — all handling is callback-based
   _deps.setStatus(id, 'waiting'); // static "waiting…" during init — no rotating words until user sends

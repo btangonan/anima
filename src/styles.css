@@ -104,12 +104,22 @@ body {
 #sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  position: relative;
   padding: 6px 8px 5px;
   border-bottom: 1px solid var(--border);
 }
-#app-logo {
+#sidebar-header .pixel-label { color: var(--accent); }
+#sidebar-header #btn-new-session { position: absolute; right: 8px; }
+#app-title-img {
   height: 14px;
+  width: auto;
+  image-rendering: pixelated;
+  pointer-events: none;
+  user-select: none;
+}
+#sidebar-logo {
+  height: 10px;
   width: auto;
   image-rendering: pixelated;
   pointer-events: none;
@@ -171,7 +181,7 @@ body {
 
 .session-card-name {
   font-size: 11px;
-  color: var(--text);
+  color: var(--accent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -185,7 +195,7 @@ body {
 
 .session-card-tokens {
   font-size: 9px;
-  color: var(--text-mute);
+  color: #adadad;
   letter-spacing: 0.3px;
   line-height: 1.2;
 }
@@ -367,7 +377,7 @@ body {
 .system-label {
   font-family: var(--font);
   font-size: 11px;
-  color: var(--text-mute);
+  color: #adadad;
   padding: 1px 0;
 }
 .system-label::before { content: '-- '; }
@@ -475,7 +485,7 @@ body {
   outline: none;
   line-height: 1.4;
 }
-#msg-input::placeholder { color: var(--text-mute); }
+#msg-input::placeholder { color: #adadad; }
 #msg-input:disabled { opacity: 0.3; cursor: not-allowed; }
 
 #btn-send {
@@ -681,7 +691,7 @@ canvas.sprite-canvas {
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.05em;
-  color: var(--text-mute);
+  color: #adadad;
   background: transparent;
   border: 1px solid currentColor;
   border-radius: 2px;
@@ -751,7 +761,7 @@ canvas.sprite-canvas {
 #settings-btn {
   font-family: var(--font-mono, monospace);
   font-size: 16px;
-  color: var(--text-mute);
+  color: #adadad;
   background: transparent;
   border: none;
   padding: 2px 4px;
