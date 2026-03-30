@@ -15,6 +15,7 @@ import { pushMessage, updateWorkingCursor, setPinToBottom, renderMessageLog } fr
 import { handleEvent, setStatus, setEventDeps } from './events.js';
 import { renderSessionCard, updateSessionCard, setActiveSession, showEmptyState } from './cards.js';
 import { initVoice, isSettingsOpen, setSettingsOpen, settingsUpdate } from './voice.js';
+import { initAttachments } from './attachments.js';
 import {
   loadSlashCommands, getSlashCommands, showSlashMenu, hideSlashMenu,
   moveSlashSelection, getSlashToken, getFlagToken,
@@ -52,6 +53,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   loadSlashCommands();
   initVoice();
+  initAttachments({ getActiveSessionId });
 
   // Animate working badge: per-session phase cycles "" "." ".." "..." every 400ms
   setInterval(() => {

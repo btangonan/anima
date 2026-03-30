@@ -85,6 +85,7 @@ export function setActiveSession(id) {
   if (s) updateWorkingCursor(s.status);
   $.inputField?.focus();
   syncOmiSessions();
+  document.dispatchEvent(new CustomEvent('pixel:session-changed', { detail: { id } }));
 }
 
 export function showEmptyState() {

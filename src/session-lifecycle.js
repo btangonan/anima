@@ -6,6 +6,7 @@ import {
   getNextIdentity, getActiveSessionId, setActiveSessionId,
   syncOmiSessions, IDENTITY_SEQ_KEY
 } from './session.js';
+import { getStagedAttachments, markAttachmentsSent } from './attachments.js';
 
 const { Command } = window.__TAURI__.shell;
 const { open: openDialog } = window.__TAURI__.dialog;
@@ -187,9 +188,26 @@ async function sendMessage(id, text) {
   _deps.pushMessage(id, { type: 'user', text: raw }); // show original in log
   _deps.setStatus(id, 'working');
 
+  // Build content: string for plain text, array for multimodal (with attachments)
+  const staged = getStagedAttachments(id);
+  let content;
+  if (staged.length === 0) {
+    content = expanded;
+  } else {
+    content = [{ type: 'text', text: expanded }];
+    for (const att of staged) {
+      if (att.isImage) {
+        content.push({ type: 'image', source: { type: 'base64', media_type: att.mimeType, data: att.data } });
+      } else {
+        content.push({ type: 'text', text: `\n\n[Attached file: ${att.name}]\n${att.data}` });
+      }
+    }
+    markAttachmentsSent(id);
+  }
+
   const line = JSON.stringify({
     type: 'user',
-    message: { role: 'user', content: expanded }
+    message: { role: 'user', content }
   }) + '\n';
   try {
     await s.child.write(line);

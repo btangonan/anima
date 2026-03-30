@@ -49,6 +49,13 @@
         <button id="btn-clear-voice-log" title="Clear voice log">CLR</button>
       </div>
       <div id="voice-log"></div>
+      <div id="attachments-header">
+        <span class="pixel-label">ATTACHMENTS</span>
+        <button id="btn-clear-attachments" title="Clear sent attachments">CLR</button>
+      </div>
+      <div id="attachments-panel">
+        <div class="att-empty">drop files here</div>
+      </div>
     </div>
 
     <div id="sidebar-resize"></div>
@@ -61,8 +68,11 @@
 
         <div id="message-log"></div>
 
+        <div id="drop-indicator" class="hidden">drop files to attach</div>
         <div id="slash-menu" class="hidden"></div>
         <div id="input-bar">
+          <div id="attachment-tokens" class="hidden"></div>
+          <div id="input-row">
           <textarea
             id="msg-input"
             placeholder="Message Claude Code..."
@@ -84,10 +94,17 @@
               <button id="voice-source-mic" class="source-btn" title="Use MacBook Pro Microphone">MIC</button>
             </div>
           </div>
+          </div>
         </div>
       </div>
 
     </div>
+  </div>
+
+  <div id="attachment-ctx-menu" class="hidden">
+    <button data-ctx="reveal">Reveal in Finder</button>
+    <button data-ctx="reattach">Re-attach</button>
+    <button data-ctx="remove">Remove</button>
   </div>
 
   <script type="module" src="app.js"></script>
