@@ -1,37 +1,38 @@
 # STATE.md — Working State (re-read after compaction)
-## Updated: 2026-03-30 09:30
+## Updated: 2026-03-31 05:10
 
 ### Active Work
-- Sprite alignment fixes COMPLETE (vertical Y offsets + horizontal X offsets)
-- Character selection order fix COMPLETE (0-degree originals first, shuffled)
-- Card centering fix COMPLETE (padding-left: 0 on .session-card)
-- Attachments section draggable resize COMPLETE (att-h-resize)
-- Octopus dedup COMPLETE: only octopus-pink in BASE, others in hue batch
-- frog3 added to BASE set with correct x/y alignment offsets
-- IDENTITY_SEQ_KEY bumped to v9, BASE_ANIMAL_COUNT=10
-- IN PROGRESS: remove OPEN button from input bar; keep status dot + gear icon (gear bigger)
+- App icon squircle issue — macOS not applying rounded corners to Cmd+Tab icon
+- Icons rebuilt as RGBA from pixel logo PNG (3x NEAREST), Tauri compiles OK
+- Session card highlight: white bar + white gradient (left-fading)
+- Sidebar bg changed to --bg (#080808), search icon + session filtering added
+- #session-panel wrapper fixes layout jump on LIVE/HISTORY tab switch
+- History broken fixed: missing `invoke` import in history.js
+- Sprite Y offsets changed to centering formula
 
 ### Key IDs
 - Collection: pixel_terminal (gemini-memory)
-- localStorage key: 'pixel-terminal-identity-seq-v9'
+- --bg: #080808, --bg2: #0e0e0e
+- --logo-orange: #db7656, --logo-green: #7bb54f
 
 ### Decisions This Session
-- SPRITE_Y_OFFSETS: per-animal Y offset table (0/3/6px at 3x) for bottom-alignment
-- SPRITE_X_OFFSETS: per-animal X offset table (0/2/3/5px at 3x) for horizontal centering
-- BASE_ANIMAL_COUNT=10 (cat2, snake, penguin, octopus-pink, crab, rat, seal, rabbit, cat, frog3)
-- session-card padding-left: 0 (was 10px) for sprite centering between sidebar left and text
-- att-h-resize draggable handle: resizes voice-log vs attachments-panel boundary
-- attachments-panel: flex: 1 1 40% (equal default height to voice-log)
+- Active session card: white accent border + white gradient fading left
+- Sidebar bg = --bg (same as message log) per user request
+- #session-panel wrapper for stable layout across tab switches
+- History search bar hidden by default, toggled via search icon
+- SPRITE_Y_OFFSETS: centering formula round(((16-vis_height)/2 - top) × 3)
+- Icons must be RGBA for Tauri generate_context!() macro
 
 ### Blockers
-- Production .app PATH fix (deferred to packaging)
+- macOS squircle not applying to app icon in Cmd+Tab (active debug)
+- Production .app PATH fix (deferred)
 
 ### Last Session Snapshot
-Date: 2026-03-30
-Open actions:
-- [ ] Production PATH fix — context: get_shell_path() Rust + cached invoke; packaging only
+Date: 2026-03-31
+Open actions (MERGED — from 7 sessions):
+- [ ] Fix macOS app icon squircle in Cmd+Tab
+- [ ] Production PATH fix — context: get_shell_path() Rust + cached invoke
 - [ ] Full A/B test: drop image, ask dimensions → verify zero Bash commands
 - [ ] Per-animal hue subsets (ANIMAL_HUES map) *(auto-recovered)*
-- [ ] Remove OPEN button from input bar; enlarge gear icon — context: in progress now
-Decisions: 14 | Fixes: 9
-Next: → remove OPEN button, enlarge gear icon in input bar
+Decisions: 29 | Fixes: 19
+Next: → Fix macOS squircle icon

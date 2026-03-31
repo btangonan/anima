@@ -27,4 +27,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["net", "sync"] }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
+libc = "0.2"
+cocoa = "0.26"
+objc = "0.2"
 

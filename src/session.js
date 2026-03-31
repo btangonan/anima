@@ -12,10 +12,10 @@ const SPRITE_DATA = {
   'seal': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAAxklEQVR4nGNgGAWjYBSMghEMGAkp4OQS+Y/M//7tDUE91DSDUvsJ6WckpLmitwlFrKO4jmQPkGsGpfYTo5+JGINAmpBpcgAlZtBSLxNyaMGSCzIbBPYd3cGwY/MuMI0L4NNPjBm0sp8YvWAA0tA4fdp/ZBpZHFmMXP34zKCH/dj0M2LLM7B8AuL7ZSQzaKnKE5UHh6J+JnRDrt1+yAAyBJtmYsBQ08+ILgDTCAMFsaEMTtYeYDYoH4HY+Erhoa5/FIwChpEFAKM3JDuNyYkcAAAAAElFTkSuQmCC',
   'snake': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAABHUlEQVR4nGNgGOGAkWEYAk4ukf/I/O/f3jCOmADg5BL5X6iTznDs4zUGK34tMH3y8WGcgcCEyxBkTK5DyDWDUvv7r8wEex5G4wOMlIYgLg+Qawal9sP0wwDJ7ueEhnqVWTUKTZRmKphBTfuJ0c+ETRAWgrCYIAdQYgal9sNi+/72GPLcz0lCCNLCDGrZ/+JgAXkp4DulIUihGdSwHwYI6WciZAChUhQXAIU6yAOTSrlJLkSpYT+x+lmQOdiSCiwEkeVweWag9WMzB1k/Nn1MyJpAhQ4o1kAYPQTNZW3BhRKIxubQgdaPbg42/dj0MWILNRhAdggMgJI0qIGBHpoDrR+bOcj6celjxGYIPkeBACmNksGkn9xyaBQwDGMAAKNsPyaqyIfWAAAAAElFTkSuQmCC',
   'cat2': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAACXBIWXMAAAsTAAALEwEAmpwYAAABuElEQVRYhe1XsUoDQRDdW4JoAoKgQiy1EcFS/AAbGy0EfyB10N5axDZiq50/EBH8hWAnIjZiIyoqCNGcYrPy1rxlOfY2u4mFcj4YspOZt7NvmNtLEqWUKDKkKDikKDqUUrk2Uh5XPt9lNpDv83thUL4P5rzKI/5m+0jhk0Y/pAE+fqj4QfjcI8/neUu+DV4fdkWrVhVX6bDxY4D8/eVRvV6YqvTFR/2zu050fYi93GqIuZ1NI5r+e/qc8LuSb5Prl08xMzYkZssfol9AOEEhoUA++PYeP91A6SKWKxO6axA/ub5kDsM14y50H5821shncawppNcYM458V/3Qx4C1fU2UWeGwtPNkRuSk0dQbrew19Rqw4xnuWzeu5x754IFPLmCPYFY4zI676vfixzRQ2gIwLgRELh7em84db6yK+mnbKZ5o1aoVTgfykA8eD4P9fIe36yPPVT+EH9NAmScGQuwLDIYCvvF38e3xAz/mLeCqH8oPbaB0kZPkO4dkdNC+wBDPWgw/FIPwQxsos0QmkRyL38QPaqCyfsCAeF6f15fIwdq0tsfbC3OxcJ1X/C/xqTv5/zcoio0v6Sr8VDTnp8YAAAAASUVORK5CYII=',
-  'octopus-pink': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAACXBIWXMAAC4jAAAuIwF4pT92AAABoklEQVRYhWP8//8/w0gGTAwjHDAxjHDAxDDCAQs2QVdRDZSCYffrG4x0cxGd3cCCzeKmyGYGPTkNFDFSHUCJByh1Ayl2sxCyGAQ2lK8m2QHkeoBSN4DUgNTCwKVHN/DqY8ImKFRmhJVNDCDkAWLNIccN6J4HAZA7QO7BZTcTNsF3XeewskkBlAQipW4gxW4mZA4omdQtrwWzf6pIgDEIBHSGEszDoBBGDmVcHiCUCsh1A7F2o9vPCGsJgiSi7WMYbIyDGXjEeRnYhNjB4r/e/WTgffee4dTtMwxt6zqxOgKW7NGTHszx7HdegPMiyGMgdSAalznkuAFmP8x8bHYjAxT7////z+Aiov7/WO4qMIaxv3RfArORaRgbpAcdg8Rhem+3XQOz365/Badh+mF2YNNPrhuQ1YMwsr0gGuQemLnoellgyQ49aYCSHDY+vmQISwWZfYFg9s19BzBSAC4zKHEDsl5wCoCKg+wH8WHugaUSrFkABmAGwSxB5+MD+PI3LHBwJX9K3YCcDdE9iQzQzWCkR28QOWBo2aokxx7Gkd4dBgA5Gc32ukadMQAAAABJRU5ErkJggg==',
-  'octopus-green': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAACXBIWXMAAC4jAAAuIwF4pT92AAABrUlEQVRYhWP8//8/w0gGTAwjHDAxjHDAxDDCAQs2QX5zcZSC4ePJl4x0cxGd3cCCzeKIXi8GZX1lFDFSHUCJByh1Ayl2sxCyGASq9+SS7AByPUCpG0BqQGph4O7Fu3j1MWETrBCqw8omBhDyALHmkOMGdM+DAMgdIPfgspsJm2DHuyasbFIAJYFIqRtIsZsJmQNKJiuKt4HZZj81wBgEWl0mE8zDoBBGDmVcHiCUCsh1A7F2o9vPCGsJgiTMU/QZwuwsGMR4pBn42IXB4p9+vmW4wfea4eLJawxbqvdidQQs2aMnPZjjT7HfAOdFkMdA6kA0LnPIcQPMfpj52OxGBsj2MyEboKgpzVAcN5Nh6/0TYI3+3tlgi0Ghr2+uhTMfw2INFnOmorJgPSAAMgPkGJCj0PMnNk+Q6wYQAMnBPA/SBwIgfSD3wDyOHvgsMA+gGwrzADofXzKEpQKQB0Ds5Te2osQCLICwmUGJG5D1gt2gDxEH2Q/iw9wDSyVYswAMwAyCWYLOxwfw5W9Y4OBK/pS6ATkbonsSGaCbwUiP3iBywNCyVUmOPYwjvTsMALDHXlrNNfZzAAAAAElFTkSuQmCC',
-  'octopus-yellow': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAACXBIWXMAAC4jAAAuIwF4pT92AAABnklEQVRYheVXsUoEMRBNwoKdomBhbSNaaKV+gPgBV1rZWdqcpRZaeo2ViJ8gXCdYXHU22mkhrIW2IoLidlaRl2OO2ZjLbhLcZh8MO8ll8t7MTsKt1FqLNkOJlkOJlkOJliNzTa5szJQuhqf7b9mYooY1ZC7ii15HrK4tluZCBaQkkKohhDurIgbuBgfBAmITSNWANVhLeHx48cYp1+Ts3JHTr4OqBOruE6PBTh6ADuiZxK1ck1+fx04/BClFTNUQwq34AG2y1+0b/+dtyRiwuXVaeYZRYV7lSQlUdUGshrrcNr/iP55fbut+b18Ur/PjBfDRVjeDnT/BPBZtRkbgCeAsAr52jNVA/JyHcxMvWWkPrbVYXp/Wt8NdY+QXxYnx+ZN8xNiGeYrNh4fG/3i+Gj8pnjhc8bEa+HoY58UTemhfOzZDEdBadmXRcq6xrw3pLXS6Z8bP36/NeGohN2+GWtu1R4oGHju6gEfz4MeY9MBIA0HaH0O0EZHYYx9855uKAwF17pNQDfwY2Ely2HvIJr4GeWH+819lDI9s++fwL7q4zYPBQQrHAAAAAElFTkSuQmCC',
-  'octopus': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAACXBIWXMAAC4jAAAuIwF4pT92AAABrElEQVRYhWP8//8/w0gGTAwjHDAxjHDAxDDCAQs2QXEpZ5SC4eWzvYx0cxGd3cCCzeLo0kYGOWVdFDFSHUCJByh1Ayl2sxCyGAQqZ6wj2QHkeoBSN4DUgNTCwKO7l/HqY8ImWBQohpVNDCDkAWLNIccN6J4HAZA7QO7BZTcTNsG+9a+wskkBlAQipW4gxW4mZA4omSztrgezlVV+gzEItGcEEczDoBBGDmVcHiCUCsh1A7F2o9vPCGsJgiQcgqIYjP1sGMQFeRiEuNnB4u++/mR4/5yH4fal0wxrprVjdQQs2aMnPZjj795hBedFkMdA6kA0LnPIcQPMfpj52OxGBsj2MyEbIK2sztCbkMVw8ch9sMYUl3CwxaDQV9UzxZmPYbEGizkJbVGwHhAAmQFyDMhR6PkTmyfIdQMIgORgngfpAwGQPpB7YB5HD3wWmAfQDYV5AJ2PLxnCUgHIAyD2/p03UGIBFkDYzKDEDch6IW6AFMAg+0F8mHtgqQRrFoABmEEwS9D5+AC+/A0LHFzJn1I3IGdDdE8iA3QzGOnRG0QOGFq2Ksmxh3Gkd4cBrxxfsJ6X1cEAAAAASUVORK5CYII=',
+  'octopus': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAABrElEQVR4nGP8//8/w0gGTAwjHDAxjHDAxDDCAQu6gLiUM9ZC4eWzvYx0cRGd3cCCbnF0aSOYLaesCxd/dPcyWI5YB1DiAVxugMkRMoNUu1mwCaJbjM6npQfIsRPZ/MoZ61DEQJGHz24mbAYVBYphZZMCyPEAtd1AjDuYsAn2rX+FlU1PD1DiBlLsZkLmgJLI0u56MFtZ5TcYg0B7RhDB/AtKYsj5D5cHcOVRSt1ArN3o9jPCWoIgCYegKAZjPxsGcUEeBiFudrD4u68/Gd4/52G4fek0w5pp7VgdgZzvkZMezPF377CC8yLIYyB1IBqXOeS4AWY/zHxsdiMDZPuZkA2QVlZn6E3IYrh45D5YY4pLONhiUOir6pkygAoYbDEIizVYzEloi4L1gADIDJBjQI5CL6CweYJcN4AASA7meZA+EADpA7kH5nH0wGeBeQDdUJgH0Pn4kiEsFYA8AGLv33kDJRZgAYTNDErcgKwX4gZIwQeyH8SHuQeWSrBmARiAGQSzBJ2PD+DL37DAwZX8KXUDcjZE9yQyQDeDkR69QeSAoWWLkhx7GEd6dxgAM5ZFvsfDJAIAAAAASUVORK5CYII=',
+  'octopus-90': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAABn0lEQVR4nGP8//8/w0gGTAwjHDAxjHDAxDDCAQu6gLOYAdZCYe+rC4x0cRGd3cCCbnFjdDuYrSuvDRe//PAqWI5YB1DiAVxugMkRMoNUu1mwCaJbjM6npQfIsRPZ/HVVm1DEQJGHz24mbAaJFSpjZZMCyPEAtd1AjDuYsAm+6r+LlU1PD1DiBlLsZkLmgJJI/dJKMPuLMhcYg0BQmx/B/AtKYsj5D5cHcOVRSt1ArN3o9jPCWoIgiSjHeAZjYy8GXnEeBg4hdrD4j3c/GUTe/2U4ffsUQ/vqFqyOQM73yEkP5nieu9/AeRHkMZA6EI3LHHLcALMfZj42u5EBiv3///9ncBLV/3+4YBsYw9gf+h+C2cg0jA3Sg45B4jC95ztvgNlPNr2G0zD9MDuw6SfXDcjqQRjZXhANcg/MXHS9LLBkh540QEkOGx9fMoSlguKecDD7/r7TGCkAlxmUuAFZLzgFMEAKPpD9ID7MPbBUgjULwADMIJgl6Hx8AF/+hgUOruRPqRuQsyG6J5EBuhmM9OgNIgcMLVuU5NjDONK7wwBkI7UHh2kUZAAAAABJRU5ErkJggg==',
+  'octopus-180': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAABq0lEQVR4nGP8//8/w0gGTAwjHDAxjHDAxDDCAQu6gLODGNZCYe+BV4x0cRGd3cCCbnFjejSYrashDxe/fOMhWI5YB1DiAVxugMkRMoNUu1mwCaJbjM6npQfIsRPZ/HX9VShioMjDZzcTNoPEzAqxskkB5HiA2m4gxh1M2ARfnerHyqanByhxAyl2MyFzQEmkfuZSMPv3L2UwBoGgwjaC+ReUxJDzHy4P4MqjlLqBWLvR7WeEtQRBElEejgw2isYMPELiDOx8QmDxn5/eMfCIvGc4ffk2Q/u81VgdgZzvkZMezPGsbHfBeRHkMZA6EI3LHHLcALMfZj42u5EBsv1MyAaoy0sxZE3vYbj/5gJYY3h5MthiUOib6qoygAoYbDEIizVYzIkySYL1gADIDJBjQI5CL6CweYJcN4AASA7meZA+EADpA7kH5nH0wGeBeQDdUJgH0Pn4kiEsFYA8AGLfuLcPJRZgAYTNDErcgKwXkgIg4iD7QXyYe2CpBGsWgAGYQTBL0Pn4AL78DQscXMmfUjcgZ0N0TyIDdDMY6dEbRA4YWrYoybGHcaR3hwH0ckd97in7ugAAAABJRU5ErkJggg==',
+  'octopus-270': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAABrElEQVR4nGP8//8/w0gGTAwjHDAxjHDAxDDCAQu6gJizJtZC4dXe64x0cRGd3cCCbnF0YyiYLa+rABd/ePkBWI5YB1DiAVxugMkRMoNUu1mwCaJbjM6npQfIsRPZ/Kp1pShioMjDZzcTNoMKxVKxskkB5HiA2m4gxh1M2AT7X83GyqanByhxAyl2MyFzQElkaf1qMFvztygYg0BbUDfB/AtKYsj5D5cHcOVRSt1ArN3o9jPCWoIgCccoGwZrG1UGMR5xBkF2IbD4+5/vGF7w/GW4ffoOw+r29VgdgZzvkZMezPHXWV+D8yLIYyB1IBqXOeS4AWY/zHxsdiMDZPuZkA2QUpdkaMmaz3Dy/l2wxtjwMrDFoNBXNVVhABUw2GIQFmuwmFMU5QHrAQGQGSDHgByFXkBh8wS5bgABkBzM8yB9IADSB3IPzOPogc8C8wC6oTAPoPPxJUNYKgB5AMTeceM0SizAAgibGZS4AVkv2A26EHGQ/SA+zD2wVII1C8AAzCCYJeh8fABf/oYFDq7kT6kbkLMhuieRAboZjPToDSIHDC1blOTYwzjSu8MAVB5HqdkK8JkAAAAASUVORK5CYII=',
   'cat-120': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAABTElEQVR4nGNgGAWjYBTgAiKcXP/x8Qe7foqACCfX/6X3W/6DaBiG8YeCfpgZ+PggwMiAA4AU2xg4gNnPnz8B05KSMgxHLhxgePP9G0596PqR9YIAqfopsX/itSqGfK02uBiMj6yfBZ8hIItBlsIcTw5A1gvzCLGAUvtXRx1jQI4EEB8dMGHTCEsqIIsV1pfDHQNjE0qGMHmQepjlIDbMI8TqJ9d+GEBOObgCkQndYhBGTiLHLXLBBuXtDwOzQQBXEkTXD1IP0gfSD9NLin5y7SclAJmw5TmYJaD8Bgu5SY6rGO6+vIPXcnT9IPUgfcTkX2raT0oAMmEzDGagsrgK3PEgDLKAlFIcpB85+ZGjn1z7iQ1AJnyGwDSDQpDUAmyg9RMbgEzoGmGKYJpJBYNJPzEByISeZJABSFPoMitw0gFhEBsXGOr6RwHDCAUAG6ZqzVERfSsAAAAASUVORK5CYII=',
   'cat-195': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAABTElEQVR4nGNgGAWjYBTgAkIinP/x8Qe7foqAkAjn/5b7V/+DaBiG8YeCfpgZ+PggwMiAA4AU2xkagNnPXz0H05JikgyHzl9gePfmO0596PqR9YIAqfopsb/o9BmGPlMTuBiMj6yfBZ8hIItBlsIcTw5A1gvzCLGAUvvPpKUwIEcCiI8OmLBphCUVkMUKJuvhjoGxCSVDmDxIPcxyEBvmEWL1k2s/DCCnHFyByIRuMQgjJ5Hj2yzABvlu2ApmgwCuJIiuH6QepA+kH6aXFP3k2k9KADJhy3MwS0D5DRZymwO8GW4/fYnXcnT9IPUgfcTkX2raT0oAMmEzDGagqrQ43PEgDLKAlFIcpB85+ZGjn1z7iQ1AJnyGwDSDQpDUAmyg9RMbgEzoGmGKYJpJBYNJPzEByISeZJABSJPJrDngpAPCIDYuMNT1jwKGEQoArItuQnOG3owAAAAASUVORK5CYII=',
   'cat-270': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAABTElEQVR4nGNgGAWjYBTgApwifP/x8Qe7fooApwjf/4kt9/+DaBiG8YeCfpgZ+PggwMiAA4AUm9pog9lPnj8H0zKSkgynj1xl+P7mE0596PqR9YIAqfopsb+j4CJDxQR9uBiMj6yfBZ8hIItBlsIcTw5A1gvzCLGAUvvXnoliQI4EEB8dMGHTCEsqIItXKcyCOwbGJpQMYfIg9TDLQWyYR4jVT679MICccnAFIhO6xSCMnESsjvuCDcr33Q9mgwCuJIiuH6QepA+kH6aXFP3k2k9KADJhy3MwS0D5DRZyEzc7Mjy/+w6v5ej6QepB+ojJv9S0n5QAZMJmGMxASWUhuONBGGQBKaU4SD9y8iNHP7n2ExuATPgMgWkGhSCpBdhA6yc2AJnQNcIUwTSTCgaTfmICkAk9ySADkKZgk2XgpAPCIDYuMNT1jwKGEQoAc35qobXmWTAAAAAASUVORK5CYII=',
@@ -41,17 +41,19 @@ const SPRITE_DATA = {
   'cat2-195': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAByklEQVR4nOVWPUsDQRDdW0Q0Ab9ibGKljY2dQbC1NmV+hFhZWouNYGXrD9Ay4l8QQqwkARux0caPKKJRBFl5y80xHLt7u14R5R4st5Odt7NvMrN3kVJKFBlSFBxSFB1KKeuYmR1XLts0OODvsrOQl+9Ccl7lEL9701N40iDbJwEuvq/4PHzaw2bTeSPbJVipllSt2dbzscGVfn6WlsTdyap4ehhEtqBRFCXBwH+/7Wi7PF/XT/D7jx9WPj8sxed7hPC3OxfioL6S/EY2+KR7xLXJ1/O1GJ1e1MJ/CxLOhfgC/uDzPUJwvP8t+J8A2+sSrFRLOj0Qvz45lxyG5rRuQtw+r5jDn4JjTkKyypjW4W+K79sGvHJsSZRp4Ri8xFu9M71Ra29DzwFTC8Tct3h9grjgaX7MBWwlTL3O103xs/ghCZRcAPUciUS/UeYaO6fi5XzL2f+1ZrtM1QE/+IPn07+850mkKb4PPySB0iYGQqbWDpPDYyCAq/xNfF5+4Ie8BUzxffm+CZSum5zIyCC/wLCeHiF8X+Th+yZQponkRORQ/CW+VwIV+4ABcXnzUl8iC40jPbrd++Riobkt+H/iZ34IFQVy2AcYNn4ATvoJHwPkVVIAAAAASUVORK5CYII=',
   'cat2-270': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAABwUlEQVR4nO1XPUsDQRCdW4KogbPRIpVEGxGilZ2djSD4A/wV2mkvaGf8AbZi2kDAyiqVVgYLGwkWIqhNEr+wWXmbm2U59vb2chbK+WDITnbezL5hbi8JpJRUZAgqOAQVHVLKRJuYDqXLt5kJxLv8NOTlu6DPKx3ij/e7Ep9s7Ps0wMX3FZ+HzzmSfD5vyZWg1hhQq9Km7vit8quNgW9tzT8Ij9R6qbxCNAIf9TtvV9r3BcQebl/Tbn1Zi2b/46Uf8HclV5L7rzuaHZun6ucCjQolPAIL8QXiwTdz/HQDhY04OTOlugbxi2vDZiEJr3nfhujx6WONeC6ONQtJG2PeR7ytvu9jwLVdTRRx4bD3554ekbPmpUq01VxXa8Dcj3Ffo/2QueCBz1zAHMG4cJi5b6ufxs/SQGEKwLgwIHLjcVV37nTznPb6O1bxjFalXebpQBziwePDIJ/r8GZ9xNnq+/CzNFAkiYEQ8wKDoYBr/G18c/zAz/IWsNX35fs2UNjIQTCMYTI6aF5g2I9bFr4v8vB9GyjiRA5iclb8Jr5XA6XxAwbEi1pHXSL1uRNlTzcP+mLhdVLxv8Rn3cH/v0EqNr4BHwX/OTKRLAIAAAAASUVORK5CYII=',
   'frog2-270': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAABzUlEQVR4nOWXPUvDUBSGz71EIQUblaSCnQRBnZROXbrqUhxEcOg/EHUSVHB0dFHE0d1BB+nk2qWjW39BB00rtEJaUImc255wG/PZDx3yQrm5Sd77nPMmTVpm2zYkWRwSLg4JF4eEi0PCxSHhUoIOpgwNA/qW91lmi+HImBgcxX2byH4/bxB/4gGkDG0OAN4vCwX3fjtqEaM0gBwcJ81XAvyi+f3HMtzuFGF5qvdtscwWFccm1UD/HMElYR3Pe9tivahrROFzP/PpyqqApgxNjKjN+ycxDxP5KUAUBogfKcCwNYQXPVQH8qMoDp97mdGoZwyROBpwRNE8Chw1TIDE9+LSfJx8Jj+ACN54M8UcQ8DU1rcOB0xLJ7vQabQHbkFch+DoQ6EXoXLhVITspxpkfj678IuLeihfwXGl4vksicMnv+JehJqn7XyuBPWXGmQ31pzm0ex+C5AQ7qyRMUA/uh5opH8FFj3NEr9af4Xq3TkUcyWHjXX4NT8sn8npH9hfYnt2WoGLT4CzeQ0+mk24Yb2c6DjO3XeAqqfj+LudRlt13z1x+O4QYvq7ltkSfCcAvyv6F/rPf6ScNlQ9HfijKEyqnnauaIRzZ0ZhjVM/00Y1hr1+fYAAAAAASUVORK5CYII=',
-  'frog3': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAACXBIWXMAAAsTAAALEwEAmpwYAAABy0lEQVRYheWXvUvDUBTFbx5BTIpQIUFQcCidBNGtXVydqrg5O7hYcJMKzp06V3DyL9BBnBydKi6Cq5PgIK0iSNMuEjmvvfE1JmnSDx1yoLyP5Lzfvfe9Jq3mui6lWYJSLkEpl6CUS1DKJSjl0qMumhkbBfpS55x2U0OrabLxlPRtovrDvFH8qRfAzNjzRPS+Vyv45924QYyTADhop83XI/wy+frBNZVPS5TN974tTrvJwWnTSqB/j+SyEMfJzbZcL+4acfgizLxVyUmombFlC1U3r+R4mNjPBYRQQHyUAg5bQ3rh4TjAj6MkfBFkhtGybFlxGNBCPI4Dh0YpIPODuDyeJF9TH0AMb7V6SaIIqNr+2s6AaSVXoY7TGjiCWIfh8EHwAqoGzkGofo5B5eeLC7+4UO3iks6P7gKfJUn47Nf9i3Dy3N8tFuj55YGWl9a95GH2vwVYgP+sYdOtdTiQSH8HFgPNCv+p8UqVxhmVSwWPjTjCkh+Vr6nVXy07sj+b1em+OkMbxwZ9fL7RY92U83wdY/8JMEwrib/bcVqG//Qk4fuLkNDfddpNyfcKELajf6H//EcquGOYVuSPomEyTMvb0Rj3zo3DmqS+Aaa7NqYBW1vuAAAAAElFTkSuQmCC'
+  'frog3': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAACXBIWXMAAAsTAAALEwEAmpwYAAABy0lEQVRYheWXvUvDUBTFbx5BTIpQIUFQcCidBNGtXVydqrg5O7hYcJMKzp06V3DyL9BBnBydKi6Cq5PgIK0iSNMuEjmvvfE1JmnSDx1yoLyP5Lzfvfe9Jq3mui6lWYJSLkEpl6CUS1DKJSjl0qMumhkbBfpS55x2U0OrabLxlPRtovrDvFH8qRfAzNjzRPS+Vyv45924QYyTADhop83XI/wy+frBNZVPS5TN974tTrvJwWnTSqB/j+SyEMfJzbZcL+4acfgizLxVyUmombFlC1U3r+R4mNjPBYRQQHyUAg5bQ3rh4TjAj6MkfBFkhtGybFlxGNBCPI4Dh0YpIPODuDyeJF9TH0AMb7V6SaIIqNr+2s6AaSVXoY7TGjiCWIfh8EHwAqoGzkGofo5B5eeLC7+4UO3iks6P7gKfJUn47Nf9i3Dy3N8tFuj55YGWl9a95GH2vwVYgP+sYdOtdTiQSH8HFgPNCv+p8UqVxhmVSwWPjTjCkh+Vr6nVXy07sj+b1em+OkMbxwZ9fL7RY92U83wdY/8JMEwrib/bcVqG//Qk4fuLkNDfddpNyfcKELajf6H//EcquGOYVuSPomEyTMvb0Rj3zo3DmqS+Aaa7NqYBW1vuAAAAAElFTkSuQmCC',
+  'k-whale-half5': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAKCAYAAADcpvzeAAAACXBIWXMAAAsTAAALEwEAmpwYAAABgUlEQVQ4jYVUwU7DMAxN2o5NQhw3reMCf+Bv2GFS6Klf2lNVqYf9QvIHnNCk3bgApS1BDnXxomR7kpc6sd9enMTSWitCMMZIALB8FEKgWeYjEgAYgyQTD8aoohxOb6+UEwcK0lpLHLnhnNY63e6eLPo4kmmtE+77uSxfUux6vQ3GkRGPExLYEUKqohzH/kuczydpjMlUUfboE9LFSjR1lQLAT4jjRSk5jGKuHvKEipI/PjsRWMELQbeIjDELVZTfKGoScw8AH5x8l+fSJqtZYPf5Pq9l2dLlIYiDAwVlQaJkJYbun2izya1PFLoPxMFFcAxD54zEhZD4RGQ+Ucfmm7paesf7FzeKCzHH49FZDE1dJf7GMiLiFSGS/X4f4+rxB19b9N8i+VSZtm3wdc53h+6Ru0N4JFTKGLIAkY+pYrizB5pTRTmvN3VFn3cA4DblwwkKER0Oag5q2+YmkScM+457FPgK6RsrQcfMN0W9zjnXekOor1yb5+vUf2g+1q98+wV7FqD/eigC7wAAAABJRU5ErkJggg==',
+  'k-whale2': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAACXBIWXMAAAsTAAALEwEAmpwYAAACUElEQVRYhcVXvW7jMAymFCfN3SFjC8dTHkHPkMGAmilPmikw4CGvYL3BTYcC3Q4Zrmls60BXdAlX/inyYwIEZUHkR1KSSQlrLXSRMUagVEp1L7wRXQvfGOOdF30J6DEq+hy7ZQK/gw8A3nXBQGUkHFsEZPMSAIouG10O9gVwTfy2ExD0OYdSb7YlzSf73URvtjXoy5/foi+AtiCHJOeW+AAgpCfT3ACClcl+N8Xv4vwGcawLlORMXwA0NsZIwnHfyJN74bvTQjgoP+bwH8A5yzLhWIbRyj4+htbNB/SNMsuyH1ynxc4E13Imu8Rj4wv+E6SdeNZa5MXn3Xp9fal2DACmcaxPaZr8BIA339Fiu4lHt9qtNE2merM9084hTabzageVUuWY+AFNRMulsHL+4YycQ376Wy9+elpaVGDUCd4MQCmVJ/vdTG+27+iEA//Fgx8DHwDKgIOf/n2CcsrzU8VIQfCAAu/kO79n3wkg2e8kD2AMfCqLASrmBZRc4XA4VHK9XnsdAoCzy6y9NIBnrWEsfAAQ1T8AM0QL2sgp4n36sntVAEy/KwC007QxBj6dAIEJcHcH07eghXGsa6U0TWg4U0pV2ed0SQBI98bnXaFoVAFJTQZvOLDZ8DUVvFlpBnA8Hmu7i8WiM4B74tP1qck26ijVSTee+Wp1G6MuyjBaUR0XYbSSvL43a/W18cNo9cDwsQ+oMRwDY/HlMUTdGZaIZsYHdl14xMuhjxWPrUvx28ZeXYEdlgPDhUOcbT5Q6lruyBtAmwPuPXIz/D6b/wEwuXBB+7CyJwAAAABJRU5ErkJggg=='
 };
 
 // ── SpriteRenderer ─────────────────────────────────────────
 // CSS background-image + RAF. No canvas. No image load events.
 // Sheet 64x16 displayed at 128x32 (2x). backgroundPosition shifts per frame.
 
-const ANIMALS = ['cat2', 'snake', 'penguin', 'octopus-pink', 'crab', 'rat', 'seal', 'rabbit', 'cat', 'frog3', 'octopus', 'octopus-yellow', 'octopus-green', 'cat-120', 'rabbit-120', 'penguin-120', 'crab-120', 'rat-120', 'seal-120', 'snake-120', 'cat2-120', 'cat-195', 'rabbit-195', 'penguin-195', 'crab-195', 'rat-195', 'seal-195', 'snake-195', 'cat2-195', 'cat-270', 'rabbit-270', 'penguin-270', 'crab-270', 'rat-270', 'seal-270', 'snake-270', 'cat2-270'];
-const IDENTITY_SEQ_KEY = 'pixel-terminal-identity-seq-v9';
+const ANIMALS = ['cat2', 'snake', 'penguin', 'octopus', 'crab', 'rat', 'seal', 'rabbit', 'cat', 'frog3', 'octopus-90', 'octopus-180', 'octopus-270', 'cat-120', 'rabbit-120', 'penguin-120', 'crab-120', 'rat-120', 'seal-120', 'snake-120', 'cat2-120', 'cat-195', 'rabbit-195', 'penguin-195', 'crab-195', 'rat-195', 'seal-195', 'snake-195', 'cat2-195', 'cat-270', 'rabbit-270', 'penguin-270', 'crab-270', 'rat-270', 'seal-270', 'snake-270', 'cat2-270'];
+const IDENTITY_SEQ_KEY = 'pixel-terminal-identity-seq-v10';
 // First BASE_ANIMAL_COUNT entries in ANIMALS are 0-degree originals; rest are hue-rotated.
-// Only octopus-pink represents octopus in the base set — octopus/yellow/green cycle in the hue batch.
+// Octopus base is at index 3; octopus-90/180/270 are hue-rotated variants in the hue batch.
 const BASE_ANIMAL_COUNT = 10;
 
 function _shuffle(arr) {
@@ -98,28 +100,33 @@ const SPRITE_X_OFFSETS = {
   'rabbit-120':3,'seal-120':3,
   'rabbit-195':3,'seal-195':3,
   'rabbit-270':3,'seal-270':3,
-  // 5px — all octopi (vis_center = 6.5)
-  'octopus':5,'octopus-pink':5,'octopus-green':5,'octopus-yellow':5,
+  // 4px — all octopi (vis_center ≈ 6.5, padded 16px frame)
+  'octopus':4,'octopus-90':4,'octopus-180':4,'octopus-270':4,
 };
 
-// Per-sprite Y offset (3x px) to bottom-align all characters on the same baseline.
-// Derived from: (13 - sprite_bot_row) × 3  where 13 is the deepest bottom row across all sprites.
-// Positive Y shifts the background image down, moving the character lower in the container.
+// Per-sprite Y offset (3x px) to vertically center each character within the 48px frame.
+// Derived from: round(((16 - vis_height) / 2 - top) × 3)  where top/bot are the first/last
+// rows with non-transparent pixels. Negative shifts the background UP to remove headroom.
+// Hue variants share geometry with their base animal.
 const SPRITE_Y_OFFSETS = {
-  // bot=13 → 0px (reference baseline)
-  'cat':0,'cat2':0,'snake':0,'frog3':0,
-  'octopus':0,'octopus-pink':0,'octopus-green':0,'octopus-yellow':0,
-  'cat-120':0,'cat2-120':0,'snake-120':0,
-  'cat-195':0,'cat2-195':0,'snake-195':0,
-  'cat-270':0,'cat2-270':0,'snake-270':0,
-  'penguin-270':0,
-  // bot=12 → 3px
-  'rabbit':3,'penguin':3,'rat':3,'seal':3,
-  'rabbit-120':3,'penguin-120':3,'rat-120':3,'seal-120':3,
-  'rabbit-195':3,'penguin-195':3,'rat-195':3,'seal-195':3,
-  'rabbit-270':3,'rat-270':3,'seal-270':3,
-  // bot=11 → 6px
-  'crab':6,'crab-120':6,'crab-195':6,'crab-270':6,
+  // top=3, bot=12 → 0px (rabbit: naturally centered)
+  'rabbit':0,'rabbit-120':0,'rabbit-195':0,'rabbit-270':0,
+  // top=3, bot=13 → −2px (cat, cat2, snake)
+  'cat':-2,'cat2':-2,'snake':-2,
+  'cat-120':-2,'cat2-120':-2,'snake-120':-2,
+  'cat-195':-2,'cat2-195':-2,'snake-195':-2,
+  'cat-270':-2,'cat2-270':-2,'snake-270':-2,
+  // top=4, bot=12 → −2px (rat)
+  'rat':-2,'rat-120':-2,'rat-195':-2,'rat-270':-2,
+  // top=4, bot=13 → −3px (octopus variants)
+  'octopus':-3,'octopus-90':-3,'octopus-180':-3,'octopus-270':-3,
+  // top=5, bot=12 → −3px (crab, seal)
+  'crab':-3,'crab-120':-3,'crab-195':-3,'crab-270':-3,
+  'seal':-3,'seal-120':-3,'seal-195':-3,'seal-270':-3,
+  // top=5, bot=13 → −4px (penguin)
+  'penguin':-4,'penguin-120':-4,'penguin-195':-4,'penguin-270':-4,
+  // top=6, bot=15 → −9px (frog3)
+  'frog3':-9,
 };
 
 class SpriteRenderer {

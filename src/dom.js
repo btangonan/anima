@@ -33,10 +33,21 @@ export function initDOM() {
   $.btnClearVoiceLog = document.getElementById('btn-clear-voice-log');
   $.voiceSourceBle = document.getElementById('voice-source-ble');
   $.voiceSourceMic = document.getElementById('voice-source-mic');
+  $.sessionPrompt = document.getElementById('session-prompt');
+  $.sessionPromptGotIt = document.getElementById('session-prompt-got-it');
+  $.sessionPromptWhale = document.getElementById('session-prompt-whale');
+  $.sidebarHeader = document.getElementById('sidebar-header');
   $.inputBar = document.getElementById('input-bar');
+  // Session search
+  $.btnSearch = document.getElementById('btn-search');
+  $.sessionSearch = document.getElementById('session-search');
+  $.sessionSearchWrap = document.getElementById('session-search-wrap');
+  $.sessionPanel = document.getElementById('session-panel');
   // History panel
+  $.historySearchWrap = document.getElementById('history-search-wrap');
   $.historyView = document.getElementById('history-view');
   $.historyList = document.getElementById('history-list');
+  $.historyCurrent = document.getElementById('history-current');
   $.historySearch = document.getElementById('history-search');
   // History find bar
   $.historyFind = document.getElementById('history-find');

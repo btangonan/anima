@@ -64,7 +64,7 @@ export function updateWorkingCursor(status) {
 
 export function pushMessage(id, msg) {
   const data = sessionLogs.get(id);
-  if (!data) return;
+  if (!data) return null;
   data.messages.push(msg);
   if (getActiveSessionId() === id) {
     if ($.messageLog) {
@@ -75,8 +75,10 @@ export function pushMessage(id, msg) {
       if (cursor) $.messageLog.insertBefore(el, cursor);
       else $.messageLog.appendChild(el);
       scheduleScroll();
+      return el;
     }
   }
+  return null;
 }
 
 export function renderMessageLog(id) {

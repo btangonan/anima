@@ -40,19 +40,27 @@
         <span class="pixel-label">SESSIONS</span>
         <div id="session-tabs">
           <button class="session-tab active" data-tab="live">LIVE</button>
-          <button class="session-tab" data-tab="hist">HIST</button>
+          <button class="session-tab" data-tab="hist">HISTORY</button>
         </div>
+        <button id="btn-search" title="Search Sessions"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="3"/><line x1="6.5" y1="6.5" x2="9" y2="9"/></svg></button>
         <button id="btn-new-session" title="New Session">＋</button>
       </div>
-      <div id="session-list">
-        <!-- session cards injected by app.js -->
-      </div>
-      <div id="history-view" class="hidden">
-        <div id="history-search-wrap">
-          <input id="history-search" type="text" placeholder="search sessions..."
+      <div id="session-panel">
+        <div id="session-search-wrap" class="hidden">
+          <input id="session-search" type="text" placeholder="filter sessions..."
                  autocorrect="off" autocomplete="off" spellcheck="false" />
         </div>
-        <div id="history-list"></div>
+        <div id="session-list">
+          <!-- session cards injected by app.js -->
+        </div>
+        <div id="history-view" class="hidden">
+          <div id="history-search-wrap" class="hidden">
+            <input id="history-search" type="text" placeholder="search sessions..."
+                   autocorrect="off" autocomplete="off" spellcheck="false" />
+          </div>
+          <div id="history-current" class="hidden"></div>
+          <div id="history-list"></div>
+        </div>
       </div>
       <div id="sidebar-h-resize"></div>
       <div id="voice-log-header">
@@ -88,7 +96,7 @@
         </div>
 
         <div id="message-log">
-          <div id="empty-state">no session — press ＋ to open a folder</div>
+          <div id="empty-state">no active sessions - press + to open a folder</div>
         </div>
 
         <div id="drop-indicator" class="hidden">drop files to attach</div>
@@ -122,6 +130,15 @@
       </div>
 
     </div>
+  </div>
+
+  <div id="session-prompt" class="hidden">
+    <div id="session-prompt-title">START HERE</div>
+    <div id="session-prompt-whale-track">
+      <div id="session-prompt-whale"></div>
+    </div>
+    <div id="session-prompt-msg">Click <span class="prompt-plus">＋</span> to open a folder to start a Claude session</div>
+    <button id="session-prompt-got-it">GOT IT</button>
   </div>
 
   <div id="attachment-ctx-menu" class="hidden">

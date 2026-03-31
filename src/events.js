@@ -1,8 +1,8 @@
 // ── Event handler + status ─────────────────────────────────
 
-import { $ } from './dom.js';
+import { $, mdParse, toolHint } from './dom.js';
 import { sessions, sessionLogs, getActiveSessionId } from './session.js';
-import { pushMessage, updateWorkingCursor } from './messages.js';
+import { pushMessage, updateWorkingCursor, scheduleScroll } from './messages.js';
 import { updateSessionCard } from './cards.js';
 
 // Tools that are Claude Code internal scaffolding — never show in UI
@@ -33,6 +33,87 @@ export function handleEvent(id, event) {
 
   switch (event.type) {
 
+    // ── Low-level streaming events (--verbose / stream-json) ──────────────
+    // These fire incrementally as Claude generates. We stream text live and
+    // show tool invocations immediately. The high-level 'assistant' event
+    // arrives later with the full aggregated content — we use it only for
+    // final state (usage, tool inputs) and skip anything already rendered.
+
+    case 'content_block_start': {
+      const blk = event.content_block;
+      if (blk?.type === 'text') {
+        // Prepare per-block stream state; message pushed on first delta
+        s._streamText = '';
+        s._streamMsg = null;
+        s._streamEl = null;
+      } else if (blk?.type === 'tool_use' && !isInternalTool(blk.name)) {
+        // Show tool name immediately — input arrives later via 'assistant'
+        const toolMsg = { type: 'tool', toolName: blk.name, toolId: blk.id, input: '', result: null };
+        pushMessage(id, toolMsg);
+        if (!s._streamedToolIds) s._streamedToolIds = new Set();
+        s._streamedToolIds.add(blk.id);
+        s.toolPending[blk.id] = true;
+      }
+      break;
+    }
+
+    case 'content_block_delta': {
+      const delta = event.delta;
+      if (delta?.type !== 'text_delta' || !delta.text) break;
+      s._streamText = (s._streamText || '') + delta.text;
+
+      if (!s._streamMsg) {
+        // First delta — create the message and capture its DOM element
+        s._streamMsg = { type: 'claude', text: s._streamText };
+        s._streamEl = pushMessage(id, s._streamMsg);
+        s._didStreamText = true;
+      } else {
+        // Accumulate in memory at full API speed.
+        // Coalesce DOM writes at ~60fps — same pattern terminal emulators use.
+        // Without this: O(n) textContent= on every delta, style recalc every time.
+        s._streamMsg.text = s._streamText;
+        s._streamMsg._html = null; // invalidate markdown cache
+        if (!s._streamRafId) {
+          s._streamRafId = requestAnimationFrame(() => {
+            s._streamRafId = null;
+            if (!s._streamMsg) return; // block_stop already fired
+            let bubble = s._streamEl?.querySelector('.msg-bubble');
+            if (!bubble && getActiveSessionId() === id) {
+              const msgs = $.messageLog?.querySelectorAll('.msg.claude');
+              if (msgs?.length) { s._streamEl = msgs[msgs.length - 1]; bubble = s._streamEl.querySelector('.msg-bubble'); }
+            }
+            if (bubble) { bubble.textContent = s._streamMsg.text; scheduleScroll(); }
+          });
+        }
+      }
+      setStatus(id, 'working');
+      break;
+    }
+
+    case 'content_block_stop': {
+      // Cancel any pending rAF flush — we're about to do a full markdown render anyway
+      if (s._streamRafId) { cancelAnimationFrame(s._streamRafId); s._streamRafId = null; }
+
+      // Block complete — re-render streamed text with full markdown
+      if (s._streamMsg && s._streamEl) {
+        const bubble = s._streamEl.querySelector('.msg-bubble');
+        if (bubble) {
+          const normalized = s._streamMsg.text.replace(/\n\n(?=[ \t]*(?:\d+[.)]\s|[-*+]\s))/g, '\n');
+          s._streamMsg._html = mdParse(normalized);
+          bubble.innerHTML = s._streamMsg._html;
+          const paras = bubble.querySelectorAll('p');
+          if (paras.length) paras[paras.length - 1].style.color = '#e8820c';
+        }
+      }
+      // Clear per-block state; _didStreamText and _streamedToolIds persist until 'assistant'
+      s._streamText = null;
+      s._streamMsg = null;
+      s._streamEl = null;
+      break;
+    }
+
+    // ── High-level aggregated event (fires after all content_block_stop) ──
+
     case 'assistant': {
       // Cancel any pending idle debounce — Claude is still going
       clearTimeout(s._idleTimer);
@@ -45,8 +126,12 @@ export function handleEvent(id, event) {
       }
       const blocks = event.message?.content || [];
 
-      const texts = blocks.filter(b => b.type === 'text').map(b => b.text);
-      if (texts.length) pushMessage(id, { type: 'claude', text: texts.join('\n') });
+      // Skip text push if already streamed incrementally via content_block_delta
+      if (!s._didStreamText) {
+        const texts = blocks.filter(b => b.type === 'text').map(b => b.text);
+        if (texts.length) pushMessage(id, { type: 'claude', text: texts.join('\n') });
+      }
+      s._didStreamText = false;
 
       for (const b of blocks) {
         if (b.type === 'tool_use') {
@@ -54,11 +139,39 @@ export function handleEvent(id, event) {
             ? JSON.stringify(b.input, null, 2)
             : String(b.input || '');
           if (!isInternalTool(b.name)) {
-            pushMessage(id, { type: 'tool', toolName: b.name, toolId: b.id, input, result: null });
+            if (s._streamedToolIds?.has(b.id)) {
+              // Already shown — backfill the real input and re-render hint
+              const data = sessionLogs.get(id);
+              const toolMsg = data
+                ? data.messages.findLast(m => m.type === 'tool' && m.toolId === b.id)
+                : null;
+              if (toolMsg) {
+                toolMsg.input = input;
+                toolMsg._hint = undefined; // force recompute
+                if (getActiveSessionId() === id) {
+                  const toolEl = $.messageLog?.querySelector(`[data-tool-id="${b.id}"]`);
+                  if (toolEl) {
+                    const hint = toolHint(b.name, input);
+                    const hintEl = toolEl.querySelector('.tool-hint');
+                    if (hintEl) { hintEl.textContent = hint || ''; }
+                    else if (hint) {
+                      const span = document.createElement('span');
+                      span.className = 'tool-hint';
+                      span.textContent = hint;
+                      toolEl.querySelector('.tool-status')?.before(span);
+                    }
+                  }
+                }
+              }
+            } else {
+              pushMessage(id, { type: 'tool', toolName: b.name, toolId: b.id, input, result: null });
+            }
           }
           s.toolPending[b.id] = true;
         }
       }
+      s._streamedToolIds = null;
+
       setStatus(id, 'working'); // no-op if already working — so always refresh card for live tokens
       updateSessionCard(id);
       break;

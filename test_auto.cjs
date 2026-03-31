@@ -57,6 +57,24 @@ check('.msg base class has no animation property', (() => {
 check('.msg-new class exists with fadeIn', css.includes('.msg-new') && css.includes('fadeIn'));
 check('@keyframes fadeIn defined', css.includes('@keyframes fadeIn'));
 
+// ── Omi toggle checks ─────────────────────────────────────
+const html = fs.readFileSync(ROOT + '/src/index.html', 'utf8');
+const appjs = fs.readFileSync(ROOT + '/src/app.js', 'utf8');
+check('omi-indicator is a <button>', html.includes('<button id="omi-indicator"'));
+check('omi-indicator has aria-label', html.includes('aria-label="Toggle Omi listening"'));
+check('omi-indicator.connected.muted style exists', css.includes('#omi-indicator.connected.muted'));
+check('amber muted color (#f5a623)', css.includes('#f5a623'));
+check('omiListening localStorage key', appjs.includes("localStorage.getItem('omiListening')"));
+check('toggleOmiListening function defined', appjs.includes('function toggleOmiListening('));
+check('Ctrl+Shift+O keyboard shortcut', appjs.includes("e.key === 'O'") && appjs.includes('e.ctrlKey && e.shiftKey'));
+check('JS-side omi:command guard (if !omiListening)', appjs.includes('if (!omiListening) return'));
+check('omiConnected state variable', appjs.includes('let omiConnected = false'));
+check('set_omi_listening invoked', appjs.includes("invoke('set_omi_listening'"));
+check('mute state re-sent on omi:connected', (() => {
+  const idx = appjs.indexOf("tauriListen('omi:connected'");
+  return idx !== -1 && appjs.slice(idx, idx + 300).includes('set_omi_listening');
+})());
+
 // ── Logic unit tests ──────────────────────────────────────
 console.log('');
 console.log('── Path-walk logic ──');

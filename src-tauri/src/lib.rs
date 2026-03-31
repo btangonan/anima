@@ -489,6 +489,34 @@ pub fn run() {
         .setup(|app| {
             ws_bridge::init(app)?;
 
+            // Set dock/Cmd+Tab icon programmatically via NSApplication —
+            // `tauri dev` runs the bare binary, not the .app bundle,
+            // so macOS doesn't read the bundled .icns for dock display.
+            #[cfg(target_os = "macos")]
+            {
+                use cocoa::appkit::NSImage;
+                use cocoa::base::nil;
+                use cocoa::foundation::{NSData, NSSize};
+                use objc::runtime::Object;
+                use objc::*;
+                let icon_bytes: &[u8] = include_bytes!("../icons/icon_master_1024_rounded.png");
+                unsafe {
+                    let ns_data = NSData::dataWithBytes_length_(
+                        nil,
+                        icon_bytes.as_ptr() as *const std::ffi::c_void,
+                        icon_bytes.len() as u64,
+                    );
+                    let ns_image: *mut Object = msg_send![class!(NSImage), alloc];
+                    let ns_image: *mut Object = msg_send![ns_image, initWithData: ns_data];
+                    // Set size in points so macOS treats it as a proper app icon
+                    // and applies the squircle mask in Cmd+Tab / Dock.
+                    let size = NSSize::new(512.0, 512.0);
+                    let _: () = msg_send![ns_image, setSize: size];
+                    let ns_app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+                    let _: () = msg_send![ns_app, setApplicationIconImage: ns_image];
+                }
+            }
+
             // Custom menu — replaces "About pixel-terminal" with "About Pixel Claude"
             // and intercepts the About action to show our styled dialog.
             let about_i = MenuItem::with_id(app, "about", "About Pixel Claude", true, None::<&str>)?;

@@ -125,8 +125,8 @@ window.addEventListener('DOMContentLoaded', () => {
     document.body.style.userSelect = '';
   });
 
-  // Sidebar vertical resize (session list / voice log)
-  const sessionList = $.sessionList;
+  // Sidebar vertical resize (session panel / voice log)
+  const sessionList = $.sessionPanel;
   const hResizeHandle = $.sidebarHResize;
   let _hResizing = false, _hStartY = 0, _hStartH = 0;
   let _hRafId = null, _hH = 0;
@@ -204,6 +204,63 @@ window.addEventListener('DOMContentLoaded', () => {
   // ── Button wiring ───────────────────────────────────────
   $.btnNewSession.addEventListener('click', pickFolder);
   $.sessionPromptGotIt.addEventListener('click', () => $.sessionPrompt.classList.add('hidden'));
+
+  // Search button — toggles search in current tab context
+  function filterSessionCards(query) {
+    const q = query.toLowerCase();
+    $.sessionList?.querySelectorAll('.session-card').forEach(card => {
+      const name = card.querySelector('.session-card-name')?.textContent?.toLowerCase() || '';
+      card.style.display = q && !name.includes(q) ? 'none' : '';
+    });
+  }
+  $.btnSearch?.addEventListener('click', () => {
+    const historyVisible = !$.historyView?.classList.contains('hidden');
+    if (historyVisible) {
+      const hWrap = $.historySearchWrap;
+      if (!hWrap) return;
+      if (hWrap.classList.contains('hidden')) {
+        hWrap.classList.remove('hidden');
+        $.historySearch?.focus();
+      } else {
+        hWrap.classList.add('hidden');
+        if ($.historySearch) {
+          $.historySearch.value = '';
+          $.historySearch.dispatchEvent(new Event('input'));
+        }
+      }
+      return;
+    } else {
+      const wrap = $.sessionSearchWrap;
+      if (!wrap) return;
+      const isHidden = wrap.classList.contains('hidden');
+      if (isHidden) {
+        wrap.classList.remove('hidden');
+        $.sessionSearch?.focus();
+      } else {
+        wrap.classList.add('hidden');
+        if ($.sessionSearch) $.sessionSearch.value = '';
+        filterSessionCards('');
+      }
+    }
+  });
+  $.sessionSearch?.addEventListener('input', (e) => {
+    filterSessionCards(e.target.value.trim());
+  });
+  $.sessionSearch?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      $.sessionSearchWrap?.classList.add('hidden');
+      $.sessionSearch.value = '';
+      filterSessionCards('');
+      $.inputField?.focus();
+    }
+  });
+  $.historySearch?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      $.historySearchWrap?.classList.add('hidden');
+      $.historySearch.value = '';
+      $.historySearch.dispatchEvent(new Event('input'));
+    }
+  });
 
   // Killer whale sprite — direction-aware, animated + swims left↔right
   const _whaleEl = $.sessionPromptWhale;

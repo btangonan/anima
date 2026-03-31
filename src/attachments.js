@@ -72,9 +72,10 @@ function resizeImageBase64(b64, mimeType) {
       const { naturalWidth: w, naturalHeight: h } = img;
       const longest = Math.max(w, h);
 
-      // Already within limits and not too large — keep as-is (preserve transparency for PNG)
+      // Always return originalWidth/originalHeight so the message metadata is accurate.
+      // The preview is resized — Claude must NOT use the blob dimensions as ground truth.
       if (longest <= CLAUDE_MAX_PX) {
-        resolve({ b64, mimeType });
+        resolve({ b64, mimeType, originalWidth: w, originalHeight: h });
         return;
       }
 
@@ -90,9 +91,9 @@ function resizeImageBase64(b64, mimeType) {
 
       const outMime = 'image/jpeg';
       const dataUrl = canvas.toDataURL(outMime, 0.85);
-      resolve({ b64: dataUrl.split(',')[1], mimeType: outMime });
+      resolve({ b64: dataUrl.split(',')[1], mimeType: outMime, originalWidth: w, originalHeight: h });
     };
-    img.onerror = () => resolve({ b64, mimeType }); // fallback: send as-is
+    img.onerror = () => resolve({ b64, mimeType, originalWidth: null, originalHeight: null });
     img.src = `data:${mimeType};base64,${b64}`;
   });
 }
@@ -106,6 +107,7 @@ async function stageFilePath(sessionId, path) {
 
   let data;
   let finalMimeType = mimeType;
+  let originalWidth = null, originalHeight = null;
   try {
     if (isImage) {
       const raw = await invoke('read_file_as_base64', { path });
@@ -115,6 +117,8 @@ async function stageFilePath(sessionId, path) {
       const resized = await resizeImageBase64(raw, mimeType);
       data = resized.b64;
       finalMimeType = resized.mimeType;
+      originalWidth = resized.originalWidth;
+      originalHeight = resized.originalHeight;
     } else {
       data = await invoke('read_file_as_text', { path });
     }
@@ -130,6 +134,8 @@ async function stageFilePath(sessionId, path) {
     mimeType: finalMimeType,
     data,
     isImage,
+    originalWidth,
+    originalHeight,
     status: 'staged',
   };
   if (!store.has(sessionId)) store.set(sessionId, []);

@@ -5,6 +5,8 @@
 import { $, esc } from './dom.js';
 import { SpriteRenderer, formatTokens } from './session.js';
 
+const { invoke } = window.__TAURI__.core;
+
 // DI — set by app.js via setHistoryDeps()
 let _deps = {
   renderMessageLog: null,
@@ -107,6 +109,7 @@ export function showHistoryTab() {
     b.classList.toggle('active', b.dataset.tab === 'hist');
   });
   $.sessionList?.classList.add('hidden');
+  $.sessionSearchWrap?.classList.add('hidden');
   $.historyView?.classList.remove('hidden');
 
   // Show the active live session card at the top of the history view
@@ -173,6 +176,7 @@ export function showLiveTab() {
     b.classList.toggle('active', b.dataset.tab === 'live');
   });
   $.historyView?.classList.add('hidden');
+  $.historySearchWrap?.classList.add('hidden');
   $.sessionList?.classList.remove('hidden');
 
   // Close find bar if open
