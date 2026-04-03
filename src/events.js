@@ -49,6 +49,8 @@ export function handleEvent(id, event) {
     // final state (usage, tool inputs) and skip anything already rendered.
 
     case 'content_block_start': {
+      // Cancel idle timer — Claude is actively generating, don't fire turn_complete mid-stream
+      clearTimeout(s._idleTimer);
       const blk = event.content_block;
       if (blk?.type === 'text') {
         // Prepare per-block stream state; message pushed on first delta
@@ -169,9 +171,9 @@ export function handleEvent(id, event) {
       if (!s._didStreamText) {
         const texts = blocks.filter(b => b.type === 'text').map(b => b.text);
         if (texts.length) {
-          if (s._vexilTurn) {
-            s._turnText = (s._turnText || '') + texts.join('\n'); // capture for VEXIL tab
-          } else {
+          // Always accumulate _turnText — daemon needs it regardless of vexil routing
+          s._turnText = (s._turnText || '') + texts.join('\n');
+          if (!s._vexilTurn) {
             pushMessage(id, { type: 'claude', text: texts.join('\n') });
           }
         }
@@ -335,12 +337,13 @@ export function handleEvent(id, event) {
             type:       'turn_complete',
             session_id: id.slice(0, 8),
             tool_count: s._turnToolCount,
-            turn_text:  (s._turnText || '').slice(0, 500),
-            user_msg:   (s._lastUserMsg || '').slice(0, 200),
+            turn_text:  (s._turnText || '').slice(-500),
+            user_msg:   (s._lastUserMsg || '').trim().replace(/\n/g, ' ').slice(0, 200),
           });
         }
         // Always reset vexil state — must not bleed into next turn
         s._turnText = '';
+        s._lastUserMsg = '';
         s._vexilTurn = false;
         s._turnToolCount = 0;
         setStatus(id, 'idle');

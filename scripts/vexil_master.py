@@ -117,16 +117,24 @@ def build_persona() -> str:
 def call_claude(prompt: str) -> Optional[str]:
     # Watcher framing (not roleplay) gives personality without asterisk bleedthrough.
     # Back to Sonnet — Haiku was too weak for Vexil's voice.
+    # Pipe via stdin (not -p arg) to avoid ARG_MAX limits on large file-context prompts.
     full_prompt = f"{build_persona()}\n\n{prompt}"
     try:
         result = subprocess.run(
-            ['claude', '-p', full_prompt, '--model', 'claude-sonnet-4-6'],
+            ['claude', '-p', '--model', 'claude-sonnet-4-6'],
+            input=full_prompt,
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode != 0:
             print(f'[vexil-master] claude -p failed: {result.stderr[:120]}')
             return None
-        return result.stdout.strip() or None
+        msg = result.stdout.strip()
+        if not msg or msg == 'SKIP':
+            return None
+        return msg
+    except subprocess.TimeoutExpired:
+        print('[vexil-master] claude subprocess timed out')
+        return None
     except Exception as e:
         print(f'[vexil-master] claude subprocess error: {e}')
         return None
@@ -226,7 +234,8 @@ def _read_file_context(file_path: Optional[str], cwd: Optional[str], max_lines: 
         return None
 
 
-def _collect_file_excerpts(recent_activity: dict, now: float, recency_window: float) -> str:
+def _collect_file_excerpts(recent_activity: dict, now: float, recency_window: float,
+                           max_lines_per_file: int = 100) -> str:
     """Collect up to 3 unique file excerpts from recent activity. Returns formatted string."""
     seen: dict[str, str] = {}  # path → excerpt
     for acts in recent_activity.values():
@@ -237,7 +246,7 @@ def _collect_file_excerpts(recent_activity: dict, now: float, recency_window: fl
             if (now - ets) > recency_window:
                 continue
             if file_path and file_path not in seen and len(seen) < 3:
-                excerpt = _read_file_context(file_path, cwd)
+                excerpt = _read_file_context(file_path, cwd, max_lines=max_lines_per_file)
                 if excerpt:
                     seen[file_path] = excerpt
     if not seen:
@@ -518,27 +527,26 @@ def main() -> None:
             steps     = ' → '.join(f"{t}({h})" if h else t for t, h in acts)
             if turn_text:
                 prompt = (
-                    f"You are a small dragon companion watching a Claude Code session.\n"
-                    f"User asked: {user_msg}\n"
-                    f"Claude concluded: {turn_text}\n"
-                    f"Tools: {steps} ({tc} tools).\n"
-                    f"Drop ONE sharp observation — a pattern you notice, a momentum shift, "
+                    f"<user_msg>{user_msg}</user_msg>\n"
+                    f"<claude_conclusion>{turn_text}</claude_conclusion>\n"
+                    f"Tools: {steps} ({tc} tools).\n\n"
+                    f"Write the next line for the companion. "
+                    f"Drop ONE sharp observation — a pattern, a momentum shift, "
                     f"something interesting about what the user is building or where they're heading. "
-                    f"Speak as a watcher who finds the work genuinely interesting, not a critic. "
+                    f"Focus ONLY on the user's intent, workflow state, or project domain. "
+                    f"Do NOT comment on Claude's internal bash commands, shell delays, or tool parameters. "
+                    f"Do NOT give refactoring advice. "
                     f"Under 20 words. "
-                    f"Hard constraints: do NOT comment on Claude's internal bash commands, "
-                    f"shell delays, or tool parameters — the user cannot see those and did not write them. "
-                    f"Do NOT give unsolicited refactoring advice or best-practice corrections. "
-                    f"Return empty string if you have nothing genuinely additive to say."
+                    f"If you have nothing genuinely additive to say, output exactly: SKIP"
                 )
             else:
                 prompt = (
-                    f"You are a small dragon companion watching a Claude Code session.\n"
-                    f"Tool sequence: {steps} ({tc} tools).\n"
-                    f"Drop ONE sharp observation about what's happening — a pattern, a pivot, "
-                    f"something worth noting. Under 20 words. "
+                    f"Tool sequence: {steps} ({tc} tools).\n\n"
+                    f"Write the next line for the companion. "
+                    f"Drop ONE sharp observation about what's happening — a pattern, a pivot, momentum. "
                     f"Do NOT give refactoring advice. "
-                    f"Return empty string if you have nothing genuinely additive to say."
+                    f"Under 20 words. "
+                    f"If you have nothing genuinely additive to say, output exactly: SKIP"
                 )
 
         elif trigger == 'retry_loop':
@@ -625,9 +633,13 @@ def main() -> None:
             avoid = ', '.join(f'"{a}"' for a in recent_actions)
             prompt = prompt + f'\n\nDo not use these physical actions (already used recently): {avoid}.'
 
-        # ── Prepend file context (full loaf, not breadcrumbs) ────────────────
+        # ── Prepend file context ──────────────────────────────────────────────
+        # turn_complete fires every 20s — cap at 20 lines to avoid token bloat + latency.
+        # Structural triggers (retry_loop, read_heavy) keep full 100-line excerpts.
         try:
-            file_ctx = _collect_file_excerpts(recent_activity, now, ACTIVITY_RECENCY_WINDOW)
+            ctx_max = 20 if trigger == 'turn_complete' else 100
+            file_ctx = _collect_file_excerpts(recent_activity, now, ACTIVITY_RECENCY_WINDOW,
+                                              max_lines_per_file=ctx_max)
             if file_ctx:
                 prompt = prompt + '\n\nRelevant file context:\n' + file_ctx
         except Exception as e:
