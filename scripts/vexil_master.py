@@ -518,19 +518,21 @@ def main() -> None:
             steps     = ' → '.join(f"{t}({h})" if h else t for t, h in acts)
             if turn_text:
                 prompt = (
-                    f"User: {user_msg}\n"
-                    f"Assistant concluded: {turn_text}\n"
-                    f"Tools: {steps} ({tc} tools).\n"
-                    f"If there's a genuine execution problem or sharp insight visible here, "
-                    f"name it in one line. Do not question the user's project goals. "
-                    f"Return empty string if the work looks clean and intentional."
+                    f"User asked: {user_msg}\n"
+                    f"Assistant response: {turn_text}\n"
+                    f"Tools used: {steps} ({tc} tools).\n"
+                    f"Your job: detect if the user's task FAILED or was BLOCKED. "
+                    f"If it failed, name the failure in one line. "
+                    f"Do NOT give coding advice, refactoring suggestions, or best-practice tips. "
+                    f"Do NOT comment on implementation details inside Claude's shell commands or tool calls — the user cannot see those. "
+                    f"Return empty string if the task completed successfully."
                 )
             else:
                 prompt = (
                     f"Tool sequence: {steps} ({tc} tools). "
-                    f"If there's a visible execution problem — a retry, a stall, an inefficiency — "
-                    f"name it in one line. Do not question the user's project goals. "
-                    f"Return empty string if the sequence looks clean."
+                    f"Did this task fail or get blocked? If yes, name the failure in one line. "
+                    f"Do NOT give coding advice or refactoring suggestions. "
+                    f"Return empty string if the sequence completed successfully."
                 )
 
         elif trigger == 'retry_loop':
