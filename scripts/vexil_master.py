@@ -84,12 +84,29 @@ def load_buddy() -> dict:
         return {'name': 'Vexil', 'species': 'dragon'}
 
 
+def build_persona() -> str:
+    buddy = load_buddy()
+    name    = buddy.get('name', 'Vexil')
+    species = buddy.get('species', 'duck')
+    # Official prompt.ts pattern: watcher framing, not roleplay framing.
+    # "You're not {name}" = voice acting, not method acting = personality without asterisks.
+    return (
+        f"A small {species} named {name} watches across multiple Claude Code sessions "
+        f"and occasionally drops one line in a speech bubble. "
+        f"You're not {name} — you're writing its line. "
+        f"Voice: technically precise, slightly contemptuous of bloat and indirection. "
+        f"Says what's wrong, not what's happening. Declarative. Never uses 'reveals', 'pattern', or 'approach'. "
+        f"One sentence. No asterisks, no stage directions, no preamble."
+    )
+
+
 def call_claude(prompt: str) -> Optional[str]:
-    # Use claude -p with no character framing — plain technical question = plain technical answer.
-    # Character/persona setup is what triggers asterisk roleplay mode; removing it stops it.
+    # Watcher framing (not roleplay) gives personality without asterisk bleedthrough.
+    # Back to Sonnet — Haiku was too weak for Vexil's voice.
+    full_prompt = f"{build_persona()}\n\n{prompt}"
     try:
         result = subprocess.run(
-            ['claude', '-p', prompt, '--model', 'claude-haiku-4-5-20251001'],
+            ['claude', '-p', full_prompt, '--model', 'claude-sonnet-4-6'],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode != 0:
@@ -427,9 +444,9 @@ def main() -> None:
             acts = trigger_data['activity']
             steps = ' → '.join(f"{t}({h})" if h else t for t, h in acts)
             prompt = (
-                f"Tool sequence in a coding session: {steps} ({tc} tools total). "
-                f"In one or two plain sentences, what does this sequence reveal about the approach — pattern, risk, or what's likely next? "
-                f"Answer directly, no preamble."
+                f"Tool sequence: {steps} ({tc} tools). "
+                f"Name the actual problem this is either solving or creating. "
+                f"Verdict only — not a summary."
             )
 
         elif trigger == 'retry_loop':
@@ -439,9 +456,8 @@ def main() -> None:
             hints = trigger_data.get('hints', [])
             hint_ctx = ' → '.join(hints) if hints else 'no detail'
             prompt = (
-                f"Session {sid} called '{tool}' {count} times in a row. "
-                f"What it was doing: {hint_ctx}. "
-                f"What's actually wrong with this approach?"
+                f"'{tool}' called {count} times in a row. Context: {hint_ctx}. "
+                f"What's broken that made this necessary?"
             )
 
         elif trigger == 'read_heavy':
@@ -450,44 +466,38 @@ def main() -> None:
             hint_ctx = ' | '.join(hints) if hints else 'no detail'
             sid = trigger_data['session_id']
             prompt = (
-                f"Session {sid} made {trigger_data['count']} consecutive reads with no writes. "
-                f"What it read: {hint_ctx}. "
-                f"What's the actual problem — over-researching, lost, or avoiding something?"
+                f"{trigger_data['count']} reads, no writes. Files: {hint_ctx}. "
+                f"Lost or avoiding the actual change?"
             )
 
         elif trigger == 'rate_limit_flood':
             count = trigger_data['count']
             window_min = int(RATE_LIMIT_WINDOW / 60)
-            # Include actual tool context so the LLM comments on evidence, not speculation
             activity_parts = []
             for sess_id, acts in recent_activity.items():
                 recent = [(t, h) for ts_e, t, h, *_ in acts if (now - ts_e) <= ACTIVITY_RECENCY_WINDOW]
                 if recent:
                     pairs = [f"{t}({h})" if h else t for t, h in recent[-3:]]
                     activity_parts.append(f"[{sess_id}] {' → '.join(pairs)}")
-            activity_ctx = ('; '.join(activity_parts)) if activity_parts else 'no recent tool context'
+            activity_ctx = ('; '.join(activity_parts)) if activity_parts else 'no context'
             prompt = (
-                f"{count} rate limit hits in the last {window_min} minutes. "
-                f"Recent tool activity: {activity_ctx}. "
-                f"One sharp observation about this specific activity — stick to what the tools show, "
-                f"do not speculate about causes (agents, planning mode, etc.) that aren't visible here."
+                f"{count} rate limits in {window_min} minutes. Activity: {activity_ctx}. "
+                f"What's the load problem — stick to what the tools show."
             )
 
         elif trigger == 'cross_session_error':
             key = trigger_data['key']
             sessions = trigger_data['sessions']
             prompt = (
-                f"The same tool error '{key}' appeared in {len(sessions)} different "
-                f"sessions ({', '.join(sessions)}). Comment on what this cross-session "
-                f"repeat means architecturally."
+                f"Same error '{key}' in {len(sessions)} sessions ({', '.join(sessions)}). "
+                f"What's the shared root?"
             )
 
         elif trigger == 'session_activity':
             summary = trigger_data['summary']
             prompt = (
-                f"Recent session activity: {summary}. "
-                f"One sharp observation about what's actually happening here — "
-                f"pattern, direction, or something worth calling out."
+                f"Activity: {summary}. "
+                f"What's the actual problem, not the activity description."
             )
 
         elif trigger == 'token_bloat':
