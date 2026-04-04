@@ -19,7 +19,6 @@ const { invoke } = window.__TAURI__.core;
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
 
-const BUDDY_PATH   = `${window.__TAURI_INTERNALS__?.metadata?.homeDir ?? '/Users/' + 'bradleytangonan'}/.config/pixel-terminal/buddy.json`;
 const LINT_PATH    = '/tmp/vexil_lint.json';
 const APPROVAL_PATH = '/tmp/vexil_approval.json';
 const HOOK_GATE_PATH      = '/tmp/pixel_hook_gate.json';

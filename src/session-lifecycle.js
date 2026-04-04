@@ -73,6 +73,7 @@ async function createSession(cwd, opts = {}) {
     _liveTokens: 0,
     _dotsPhase: 0,
     _pendingQueue: [],
+    _initialized: false,  // true only after system/init fires — gates sendMessage
     _perfHistory: [],     // rolling perf stats per turn
     _turnStart: null,     // timestamp when message sent to stdin
     _ttft: null,          // time to first token (ms)
@@ -157,7 +158,8 @@ async function spawnClaude(id) {
     const child = await cmd.spawn();
     s.child = child;
     s.toolPending = {};
-    // _pendingMsg is flushed in system/init handler — Claude only reads stdin after that event
+    s._initialized = false;  // reset — block direct sends until system/init fires
+    // _pendingQueue is flushed in system/init handler — Claude only reads stdin after that event
 
   } catch (err) {
     _deps.pushMessage(id, { type: 'error', text: `Failed to start Claude Code: ${err}` });
@@ -361,8 +363,9 @@ async function sendMessage(id, text) {
 
   if (warnIfUnknownCommand(id, raw)) return;
 
-  if (!s.child) {
-    // Process still spawning — queue until system/init fires.
+  if (!s.child || !s._initialized) {
+    // Process still spawning or history not yet loaded (--continue reads JSONL on init).
+    // Queue until system/init fires — don't write to stdin before Claude has full context.
     // Don't _pushMessage yet — show it after "Ready" so log order is correct.
     s._pendingQueue.push(raw);
     _deps.setStatus(id, 'working'); // badge reacts immediately

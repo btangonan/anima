@@ -312,7 +312,14 @@ def main() -> None:
             with open(FEED_PATH, 'rb') as f:
                 f.seek(feed_offset)
                 chunk = f.read()
-                feed_offset += len(chunk)
+            # Only advance to the last complete line — a trailing partial line (written mid-event)
+            # would advance the offset past it, permanently losing the event.
+            last_nl = chunk.rfind(b'\n')
+            if last_nl >= 0:
+                feed_offset += last_nl + 1
+                chunk = chunk[:last_nl + 1]
+            else:
+                chunk = b''  # no complete lines yet — skip this poll cycle
             for raw_line in chunk.decode(errors='replace').splitlines():
                 raw_line = raw_line.strip()
                 if not raw_line:
