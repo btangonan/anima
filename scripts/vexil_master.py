@@ -138,6 +138,8 @@ def _spawn_oracle_process() -> Tuple[subprocess.Popen, queue.Queue]:
     return proc, text_queue
 
 
+_AUTH_ERROR_STRINGS = ('not logged in', 'please run /login', 'authentication', 'unauthorized')
+
 def _oracle_reader_thread_fn(proc: subprocess.Popen, text_queue: queue.Queue) -> None:
     """Read stream-json events from oracle stdout. Emits one text string per completed turn."""
     current_text: list = []
@@ -162,8 +164,13 @@ def _oracle_reader_thread_fn(proc: subprocess.Popen, text_queue: queue.Queue) ->
         elif etype == 'result':
             # result event marks turn end — emit accumulated text
             text = ''.join(current_text).strip()
-            text_queue.put(text if text else None)
             current_text = []
+            # Swallow auth errors — process will die, health check respawns after /login
+            if text and any(s in text.lower() for s in _AUTH_ERROR_STRINGS):
+                print(f'[vexil-master] oracle auth error — run `claude /login` to fix', flush=True)
+                text_queue.put('__auth_error__')
+            else:
+                text_queue.put(text if text else None)
     # Process exited
     text_queue.put(None)
 
@@ -362,8 +369,9 @@ def main() -> None:
     # Write startup signal so companion.js can detect daemon presence on poll
     append_out('\u22b8 online')
 
-    # ── Oracle persistent process ─────────────────────────────────────────────
-    oracle_proc, oracle_queue = _spawn_oracle_process()
+    # ── Oracle persistent process (lazy — spawned on first query) ────────────
+    oracle_proc: Optional[subprocess.Popen] = None
+    oracle_queue: queue.Queue = queue.Queue()
 
     def _sigterm_handler(signum, frame):
         if oracle_proc and oracle_proc.poll() is None:
@@ -378,9 +386,9 @@ def main() -> None:
     def _oracle_worker(query: dict) -> None:
         nonlocal _oracle_busy, oracle_proc, oracle_queue
         try:
-            # Health check — respawn if dead
-            if oracle_proc.poll() is not None:
-                print('[vexil-master] oracle process dead — respawning', flush=True)
+            # Lazy init + health check — spawn on first use or respawn if dead
+            if oracle_proc is None or oracle_proc.poll() is not None:
+                print('[vexil-master] oracle process starting', flush=True)
                 oracle_proc, oracle_queue = _spawn_oracle_process()
 
             # Build context blob (same structure as former call_claude_oracle)
@@ -427,6 +435,8 @@ def main() -> None:
                 reply = None
                 print('[vexil-master] oracle timed out', flush=True)
 
+            if reply == '__auth_error__':
+                reply = 'Run `claude /login` in your terminal — oracle needs a fresh auth token. I\'ll reconnect automatically after.'
             if reply:
                 out_entry = json.dumps({
                     'type': 'oracle_response',
