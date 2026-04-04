@@ -206,7 +206,7 @@ function initOraclePreChat() {
   const input = $.oracleInput;
   if (!wrap || !input) return;
 
-  let _reqId = 0;
+  let _reqId = Date.now(); // timestamp-based start prevents cross-session req_id=1 collision
   let _pendingReqId  = null;
   let _pendingMsg    = '';   // user message awaiting oracle response (for history)
   let _thinkingEl    = null;

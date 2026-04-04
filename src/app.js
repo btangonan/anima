@@ -243,14 +243,15 @@ window.addEventListener('DOMContentLoaded', () => {
   let _walkerFrame = 0, _walkerX = 0, _walkerDir = 1, _walkerTick = 0;
   if (_walkerEl) {
     _walkerEl.textContent = renderFrame(_walkerSpecies, 0, 'o', 'none').join('\n');
+    _walkerEl.style.transform = 'scaleX(-1)'; // start facing right (sprites default to facing left)
     setInterval(() => {
       _walkerFrame = (_walkerFrame + 1) % 3;
       _walkerEl.textContent = renderFrame(_walkerSpecies, _walkerFrame, 'o', 'none').join('\n');
       const track = _walkerEl.parentElement;
       const maxX = Math.max(0, track.offsetWidth - _walkerEl.offsetWidth);
       _walkerX += _walkerDir * 8;
-      if (_walkerX >= maxX) { _walkerX = maxX; _walkerDir = -1; _walkerEl.style.transform = 'scaleX(-1)'; }
-      if (_walkerX <= 0)    { _walkerX = 0;    _walkerDir =  1; _walkerEl.style.transform = 'scaleX(1)';  }
+      if (_walkerX >= maxX) { _walkerX = maxX; _walkerDir = -1; _walkerEl.style.transform = 'scaleX(1)';  }
+      if (_walkerX <= 0)    { _walkerX = 0;    _walkerDir =  1; _walkerEl.style.transform = 'scaleX(-1)'; }
       _walkerEl.style.left = _walkerX + 'px';
       _walkerTick++;
       if (_walkerTick % 2 === 0) $.btnNewSession?.classList.toggle('plus-inverted');
