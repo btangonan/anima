@@ -50,6 +50,29 @@ tell application "Terminal"
 end tell
 EOF
 
+# Check for duplicate ES module exports before launching
+DUPE_EXPORTS=$(node --input-type=module <<'NODEEOF'
+import { readFileSync } from 'fs';
+const files = ['src/session.js','src/cards.js','src/history.js','src/app.js','src/companion.js','src/voice.js','src/session-lifecycle.js','src/messages.js','src/events.js'];
+let found = false;
+for (const f of files) {
+  const src = readFileSync(f, 'utf8');
+  const inline = [...src.matchAll(/^export (?:function|const|class|let|var)\s+(\w+)/gm)].map(m=>m[1]);
+  const block  = [...src.matchAll(/^export \{([^}]+)\}/gm)].flatMap(m=>m[1].split(',').map(s=>s.trim().split(/\s+as\s+/)[0].trim()));
+  const all = [...inline, ...block];
+  const dupes = all.filter((v,i)=>all.indexOf(v)!==i);
+  if (dupes.length) { console.log(`DUPLICATE EXPORT in ${f}: ${dupes.join(', ')}`); found = true; }
+}
+if (!found) console.log('ok');
+NODEEOF
+)
+if [[ "$DUPE_EXPORTS" != "ok" ]]; then
+  echo "⛔ LAUNCH BLOCKED — duplicate exports detected:"
+  echo "$DUPE_EXPORTS"
+  echo "Fix before launching."
+  exit 1
+fi
+
 # Print JS fingerprint so we can confirm new code is loaded
 JS_HASH=$(cat src/companion.js src/voice.js src/session-lifecycle.js src/session.js src/cards.js src/history.js src/app.js src/index.html src/styles.css | shasum -a 256 | cut -c1-8)
 echo "┌─────────────────────────────────────┐"
