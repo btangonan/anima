@@ -3,9 +3,9 @@
 vexil_master.py — Proactive cross-session Vexil commentary daemon.
 
 Polls /tmp/vexil_feed.jsonl for events from all pixel-terminal sessions.
-Watches tool sequences per session and fires Gemini Flash when patterns
-suggest something worth commenting on. Also watches for rate limits,
-tool errors, and token bloat across sessions.
+Watches tool sequences per session and fires Claude (claude -p subprocess)
+when patterns suggest something worth commenting on. Also watches for
+tool errors and token bloat across sessions.
 
 Triggers:
   retry_loop          — same tool 3+ times in a row in one session
@@ -598,7 +598,7 @@ def main() -> None:
         if trigger is None:
             continue
 
-        # ── Build Gemini prompt ───────────────────────────────────────────────
+        # ── Build Claude prompt ───────────────────────────────────────────────
         if trigger == 'turn_complete':
             sid       = trigger_data['session_id']
             tc        = trigger_data['tool_count']
