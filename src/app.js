@@ -69,6 +69,17 @@ window.addEventListener('DOMContentLoaded', () => {
   initHistory();
   initCompanion();
 
+  // Sync oracle pre-chat height to match input-bar exactly
+  function syncOracleHeight() {
+    const inputBar = document.getElementById('input-bar');
+    const oraclePreChat = document.getElementById('oracle-pre-chat');
+    if (inputBar && oraclePreChat) {
+      oraclePreChat.style.height = inputBar.offsetHeight + 'px';
+    }
+  }
+  requestAnimationFrame(syncOracleHeight);
+  window.addEventListener('resize', syncOracleHeight);
+
   // Animate working badge + familiar frames every 400ms
   setInterval(() => {
     sessions.forEach((s, id) => {

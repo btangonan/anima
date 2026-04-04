@@ -697,7 +697,7 @@ export async function initCompanion() {
     await pollLintFile();
   }, POLL_INTERVAL);
   setInterval(pollOpsReport, 5000);   // ops report slower — less frequent events
-  setInterval(pollMasterOut, 5000);   // master proactive commentary
+  setInterval(pollMasterOut, 1500);   // master proactive commentary
 }
 
 // Returns the lowercase trigger prefix for addressing the companion (e.g. "vexil ")

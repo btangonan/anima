@@ -132,7 +132,7 @@ body {
 #app-title-img {
   position: absolute;
   top: 50%;
-  left: calc(255px + (100% - 255px) / 2);
+  left: 50%;
   transform: translate(-50%, -50%);
   height: 15px;
   width: auto;
@@ -361,8 +361,10 @@ body.no-session-active #empty-state { display: block; }
 /* ── ASCII buddy sprite (inside vexil-bio header row) ── */
 #vexil-ascii {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   flex-shrink: 0;
+  height: 60px; /* 5 lines × 12px — fixed so bio row never shifts height between frames */
+  overflow: hidden;
 }
 
 .vexil-ascii-art {
@@ -389,6 +391,7 @@ body.no-session-active #empty-state { display: block; }
   border-bottom: 1px solid color-mix(in srgb, var(--companion-hue, #CC7D5E) 35%, transparent);
   flex-shrink: 0;
 }
+.vexil-bio.hidden { display: none; }
 .vexil-bio-name {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -855,9 +858,11 @@ canvas.sprite-canvas {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px 3px;
-  border-top: 1px solid var(--border);
+  padding: 6px 8px 5px;
   border-bottom: 1px solid var(--border);
+}
+#voice-log-header.oracle-active {
+  border-bottom-color: color-mix(in srgb, var(--companion-hue, #CC7D5E) 35%, transparent);
   flex-shrink: 0;
 }
 #voice-log-tabs {
@@ -870,25 +875,25 @@ canvas.sprite-canvas {
   font-weight: 600;
   color: var(--text-mid);
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 2px;
   cursor: pointer;
   padding: 2px 5px;
   letter-spacing: 0.04em;
   opacity: 0.65;
-  transition: color 0.15s, opacity 0.15s;
+  transition: color 0.15s, border-color 0.15s, opacity 0.15s;
 }
 .voice-tab:hover { opacity: 1; color: var(--accent); }
 .voice-tab.active {
   color: var(--accent);
+  border-color: var(--border-hi);
   opacity: 1;
-  border-bottom: 1px solid var(--accent);
 }
 #vexil-tab-btn {
   color: var(--companion-hue, #CC7D5E);
 }
 #vexil-tab-btn.active {
   color: var(--companion-hue, #CC7D5E);
-  border-bottom-color: var(--companion-hue, #CC7D5E);
 }
 #btn-clear-voice-log {
   font-family: var(--font-mono);
@@ -927,6 +932,15 @@ canvas.sprite-canvas {
 .voice-entry.dispatched .ts { opacity: 0.9; }
 
 /* ── Vexil chat log panel ─── */
+#oracle-chat-log {
+  overflow-y: auto;
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  max-height: 40%;
+  flex-shrink: 0;
+}
 #vexil-log {
   flex: 1 1 40%;
   min-height: 0;
@@ -969,17 +983,26 @@ canvas.sprite-canvas {
   background: transparent;
   border: none;
   color: var(--text);
-  font-family: var(--font-mono);
+  font-family: var(--font);
   font-size: var(--fs-base);
-  padding: var(--sp-2) 6px;
+  padding: var(--sp-2);
   outline: none;
   line-height: var(--lh-base);
+  -webkit-appearance: none;
+  appearance: none;
+}
+#oracle-input::placeholder {
+  font-family: var(--font);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--text-mid);
+  opacity: 1;
 }
 #oracle-send {
   background: transparent;
   border: none;
   color: var(--text-mute);
-  font-family: var(--font-mono);
+  font-family: var(--font);
   font-size: var(--fs-base);
   padding: var(--sp-2) 6px;
   cursor: pointer;
@@ -1200,14 +1223,15 @@ canvas.sprite-canvas {
   width: 100%;
   height: 56px;
   overflow: hidden;
-  margin-bottom: 14px;
+  margin-bottom: 3px;
 }
 #session-prompt-walker {
   position: absolute;
-  top: 0;
+  top: 4px;
   left: 0;
-  font-size: 15px;
-  line-height: 1.15;
+  font-size: 9px;
+  line-height: 1.1;
+  font-weight: 700;
   margin: 0;
   padding: 0;
   white-space: pre;

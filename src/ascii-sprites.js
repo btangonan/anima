@@ -67,7 +67,7 @@ export const SPRITES = {
   penguin: [
     ['            ', '  .---.     ', '  ({E}>{E})     ', ' /(   )\\    ', '  `---´     '],
     ['            ', '  .---.     ', '  ({E}>{E})     ', ' |(   )|    ', '  `---´     '],
-    ['  .---.     ', '  ({E}>{E})     ', ' /(   )\\    ', '  `---´     ', '   ~ ~      '],
+    ['            ', '  .---.     ', '  ({E}>{E})     ', ' /(   )\\    ', '   ~ ~      '],
   ],
   turtle: [
     ['            ', '   _,--._   ', '  ( {E}  {E} )  ', ' /[______]\\ ', '  ``    ``  '],
@@ -141,10 +141,11 @@ export function renderFrame(species, frameIdx, eyeChar, hat = 'none') {
     lines[0] = HATS[hat] ?? HATS.none;
   }
 
-  // Drop line 0 if: no hat AND every frame has blank line 0 (e.g. duck, goose)
+  // Drop line 0 if: no hat AND this frame's line 0 is blank
+  // Per-frame check (not all-frames) so idle frames normalize to 4 lines regardless of species,
+  // while action frames with decoration (dragon ~, octopus o, etc.) keep their 5th line.
   const noHat = !hat || hat === 'none';
-  const allFramesBlankLine0 = speciesFrames.every(f => f[0].trim() === '');
-  if (noHat && allFramesBlankLine0) {
+  if (noHat && lines[0].trim() === '') {
     lines = lines.slice(1);
   }
 

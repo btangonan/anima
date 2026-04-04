@@ -219,8 +219,7 @@ function initOraclePreChat() {
   let _history       = [];  // [{role, content}] rolling last 6
 
   function setVisible() {
-    const show = _vexilTabActive;
-    wrap.classList.toggle('hidden', !show);
+    wrap.classList.add('hidden');
   }
 
   const _oracleChatLog = document.getElementById('oracle-chat-log');

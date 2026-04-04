@@ -396,9 +396,13 @@ export function handleEvent(id, event) {
 
     case 'rate_limit_event':
       s._hitRateLimit = true;
-      pxLog('RATE-LIMIT', `id:${id.slice(0,8)} — CLI retrying automatically`);
-      pushMessage(id, { type: 'system-msg', text: '\u29d6 rate limited \u00b7 retrying\u2026' });
-      appendVexilFeed({ type: 'rate_limit', session_id: id.slice(0, 8) });
+      s._rateLimitCount = (s._rateLimitCount || 0) + 1;
+      pxLog('RATE-LIMIT', `id:${id.slice(0,8)} hit #${s._rateLimitCount} — CLI retrying automatically`);
+      pushMessage(id, { type: 'system-msg', text: s._rateLimitCount > 1
+        ? `\u29d6 rate limited \u00d7${s._rateLimitCount} \u00b7 retrying\u2026`
+        : '\u29d6 rate limited \u00b7 retrying\u2026' });
+      addToVexilLog('warn', `rate limit hit #${s._rateLimitCount} \u00b7 session ${id.slice(0,8)}`);
+      appendVexilFeed({ type: 'rate_limit', session_id: id.slice(0, 8), retry: s._rateLimitCount });
       break;
 
     default:
