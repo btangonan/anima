@@ -149,6 +149,9 @@ export function showFamiliarCard(sessionId) {
   document.body.appendChild(overlay);
   _profileCardEl = overlay;
 
+  // Reset hover state on all session cards — overlay prevents mouseleave firing
+  document.querySelectorAll('.session-card.card-hover').forEach(el => el.classList.remove('card-hover'));
+
   // Animate sprite at 500ms (~2 FPS)
   let frame = 0;
   _profileAnimId = setInterval(() => {
@@ -209,6 +212,10 @@ export function renderSessionCard(id) {
     });
     card.querySelector('.session-card-top').appendChild(viewBtn);
   }
+
+  // Explicit hover state — CSS :hover can get stuck in Tauri when overlay intercepts mouseleave
+  card.addEventListener('mouseenter', () => card.classList.add('card-hover'));
+  card.addEventListener('mouseleave', () => card.classList.remove('card-hover'));
 
   card.addEventListener('click', (e) => {
     if (e.target.closest('.session-card-kill')) return;

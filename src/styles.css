@@ -1678,7 +1678,7 @@ body.no-session-active #btn-new-session.plus-inverted {
   pointer-events: none;
   transition: opacity 0.1s, color 0.1s, border-color 0.1s;
 }
-.session-card:hover .familiar-view-btn {
+.session-card.card-hover .familiar-view-btn {
   opacity: 1;
   pointer-events: auto;
 }
