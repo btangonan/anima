@@ -235,7 +235,7 @@ body {
 .session-card-top {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 2px;
 }
 
 .session-card-info {
@@ -696,6 +696,7 @@ canvas.sprite-canvas {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-left: 4px;
 }
 
 .sprite-wrap pre.familiar-pre {
@@ -709,6 +710,10 @@ canvas.sprite-canvas {
   color: var(--accent);
   user-select: none;
   text-align: center;
+}
+
+.sprite-wrap pre.familiar-pre[data-species="cactus"] {
+  font-size: 5px;
 }
 
 /* ── Confirm modal ───────────────────────── */

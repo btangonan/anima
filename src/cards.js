@@ -46,6 +46,7 @@ export function renderSessionCard(id) {
     wrap.style.setProperty('--familiar-hue', s.familiarHue ?? '#FFDD44');
     const pre = document.createElement('pre');
     pre.className = 'familiar-pre';
+    pre.dataset.species = s.familiar.species;
     pre.textContent = renderFrame(s.familiar.species, 0, s.familiar.eye, s.familiar.hat).join('\n');
     wrap.appendChild(pre);
   }
