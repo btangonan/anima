@@ -5,7 +5,7 @@ import { sessions, getActiveSessionId } from './session.js';
 import { sendMessage } from './session-lifecycle.js';
 import { pushMessage } from './messages.js';
 import { setActiveSession } from './cards.js';
-import { LINT_LOG, setVexilLogListener } from './companion.js';
+import { getLintLogForSession, clearLintLog, setVexilLogListener } from './companion.js';
 import { clearSentAttachments } from './attachments.js';
 
 const { Command } = window.__TAURI__.shell;
@@ -76,7 +76,7 @@ function initVexilTabs() {
     if ($.vexilLog)        $.vexilLog.classList.toggle('hidden',        target !== 'vexil');
     if ($.attachmentsPanel) $.attachmentsPanel.classList.toggle('hidden', target !== 'files');
     // vexil-bio is always visible at bottom — not tab-toggled
-    if (target === 'vexil') renderVexilLog(LINT_LOG);
+    if (target === 'vexil') renderVexilLog(getLintLogForSession(getActiveSessionId()));
   }
 
   tabs.forEach(btn => btn.addEventListener('click', () => showTab(btn.dataset.vtab)));
@@ -84,12 +84,17 @@ function initVexilTabs() {
   // Initialize to BUDDY tab (matches active class in HTML)
   showTab('vexil');
 
+  // When user switches session, flip buddy log to that session's entries
+  document.addEventListener('pixel:session-changed', (e) => {
+    if (_vexilTabActive) renderVexilLog(getLintLogForSession(e.detail.id));
+  });
+
   // Tab-aware CLR
   $.btnClearVoiceLog?.addEventListener('click', () => {
     const active = document.querySelector('.voice-tab.active')?.dataset.vtab;
     if (active === 'vexil') {
-      LINT_LOG.length = 0;
-      renderVexilLog(LINT_LOG);
+      clearLintLog(getActiveSessionId());
+      renderVexilLog([]);
     } else if (active === 'files') {
       clearSentAttachments();
     } else {

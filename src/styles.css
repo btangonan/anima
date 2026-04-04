@@ -363,7 +363,7 @@ body.no-session-active #empty-state { display: block; }
   padding: 0;
   white-space: pre;
   user-select: none;
-  text-align: left;
+  text-align: center;
   /* Glow effect matches the buddy's hue */
   text-shadow: 0 0 8px color-mix(in srgb, var(--companion-hue, #39FF14) 60%, transparent);
   opacity: 0.92;
@@ -371,7 +371,7 @@ body.no-session-active #empty-state { display: block; }
 }
 
 /* Buddy bio — persistent footer, always at panel bottom */
-.vexil-bio { padding: 6px 6px 4px; border-top: 1px solid var(--border); margin-top: 4px; }
+.vexil-bio { padding: 6px 6px 12px; border-top: 1px solid var(--border); margin-top: 4px; }
 .vexil-bio-name { font-family: var(--font-mono); font-size: 9px; color: var(--text); opacity: 0.9; text-transform: uppercase; letter-spacing: 0.04em; }
 .vexil-bio-personality { font-family: var(--font-mono); font-size: 9px; color: var(--text-mid); opacity: 0.7; margin-top: 2px; font-style: italic; line-height: 1.35; }
 

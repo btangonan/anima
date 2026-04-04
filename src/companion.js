@@ -12,7 +12,7 @@
  * species not yet drawn as pixel art).
  */
 
-import { SPRITE_DATA } from './session.js';
+import { SPRITE_DATA, getActiveSessionId } from './session.js';
 import { SPRITES, EYE_CHARS, DEFAULT_EYE, HATS, renderFrame } from './ascii-sprites.js';
 
 const { invoke } = window.__TAURI__.core;
@@ -553,14 +553,22 @@ async function _writeProjectChar(cwd, animalName) {
 
 // ── Lint event log (for #vexil-monitor panel) ─────────────────────────────────
 
-const LINT_LOG = [];  // max 100 entries, newest first
+// Per-session log: Map<sessionId, [{ts, state, msg}]>, max 100 entries per session
+const LINT_LOG = new Map();
 
 function addToLintLog(state, msg) {
+  const sessionId = getActiveSessionId();
+  if (!sessionId) return;
   const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  LINT_LOG.push({ ts, state, msg: msg ?? '' });
-  if (LINT_LOG.length > 100) LINT_LOG.shift(); // drop oldest when capped
-  if (_vexilLogListener) _vexilLogListener(LINT_LOG);
+  if (!LINT_LOG.has(sessionId)) LINT_LOG.set(sessionId, []);
+  const log = LINT_LOG.get(sessionId);
+  log.push({ ts, state, msg: msg ?? '' });
+  if (log.length > 100) log.shift(); // drop oldest when capped
+  if (_vexilLogListener) _vexilLogListener(log);
 }
+
+export function getLintLogForSession(id) { return LINT_LOG.get(id) ?? []; }
+export function clearLintLog(id) { LINT_LOG.set(id, []); }
 
 export function setVexilLogListener(cb) { _vexilLogListener = cb; }
 export function addToVexilLog(state, msg) {
