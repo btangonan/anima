@@ -90,7 +90,7 @@ end tell
 EOF
 
 # Wipe event feeds from last run (fresh slate per launch)
-rm -f /tmp/vexil_feed.jsonl /tmp/vexil_master_out.jsonl
+rm -f /tmp/vexil_feed.jsonl /tmp/vexil_master_out.jsonl /tmp/oracle_query.json
 
 # Clear WebKit network cache so HTML/CSS changes land without a manual wipe
 # ~/Library/WebKit/pixel-terminal = LocalStorage only (keep it)

@@ -81,7 +81,8 @@ function initVexilTabs() {
     if ($.vexilLog)        $.vexilLog.classList.toggle('hidden',        target !== 'vexil');
     if ($.attachmentsPanel) $.attachmentsPanel.classList.toggle('hidden', target !== 'files');
     // vexil-bio is always visible at bottom — not tab-toggled
-    if (target === 'vexil') renderVexilLog(getLintLogForSession(getActiveSessionId()));
+    // Only re-render lint log when a session is active — pre-session oracle content must not be wiped
+    if (target === 'vexil' && sessions.size > 0) renderVexilLog(getLintLogForSession(getActiveSessionId()));
   }
 
   tabs.forEach(btn => btn.addEventListener('click', () => showTab(btn.dataset.vtab)));
@@ -206,20 +207,14 @@ function initOraclePreChat() {
   if (!wrap || !input) return;
 
   let _reqId = 0;
-  let _pendingReqId = null;
-  let _thinkingEl   = null;
-  let _history      = [];  // [{role, content}] rolling last 6
+  let _pendingReqId  = null;
+  let _pendingMsg    = '';   // user message awaiting oracle response (for history)
+  let _thinkingEl    = null;
+  let _history       = [];  // [{role, content}] rolling last 6
 
   function setVisible() {
     const show = sessions.size === 0 && _vexilTabActive;
     wrap.classList.toggle('hidden', !show);
-    // On first reveal with empty log, show the idle prompt
-    if (show && $.vexilLog && $.vexilLog.children.length === 0) {
-      const el = document.createElement('div');
-      el.className = 'vexil-entry vexil-entry--buddy';
-      el.textContent = 'Watching. Nothing to observe yet — open a project to give me something to work with.';
-      $.vexilLog.appendChild(el);
-    }
     if (show) setTimeout(() => input.focus(), 50);
   }
 
@@ -239,12 +234,11 @@ function initOraclePreChat() {
     input.value = '';
 
     appendEntry(text, 'oracle-user-msg');
-    _history.push({ role: 'user', content: text });
-
     _thinkingEl = appendEntry('· · ·', 'oracle-thinking');
 
     const reqId = ++_reqId;
     _pendingReqId = reqId;
+    _pendingMsg = text;
 
     try {
       await invoke('write_file_as_text', {
@@ -270,6 +264,7 @@ function initOraclePreChat() {
     $.vexilLog?.appendChild(el);
     $.vexilLog.scrollTop = $.vexilLog.scrollHeight;
 
+    _history.push({ role: 'user', content: _pendingMsg });
     _history.push({ role: 'oracle', content: entry.msg });
     if (_history.length > 6) _history = _history.slice(-6);
   });
