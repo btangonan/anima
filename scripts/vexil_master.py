@@ -10,7 +10,6 @@ tool errors, and token bloat across sessions.
 Triggers:
   retry_loop          — same tool 3+ times in a row in one session
   read_heavy          — 9+ consecutive read ops within 90s with no write
-  rate_limit_flood    — 3+ rate_limit events in any 10-minute window
   cross_session_error — same tool error in 2+ different sessions
   token_bloat         — single turn > 80k tokens
 
@@ -31,10 +30,8 @@ FEED_PATH            = '/tmp/vexil_feed.jsonl'
 OUT_PATH             = '/tmp/vexil_master_out.jsonl'
 ORACLE_QUERY_PATH    = '/tmp/oracle_query.json'
 POLL_INTERVAL        = 1.0
-COOLDOWN             = 60.0   # global cooldown for anomaly triggers (retry, rate_limit, etc.)
+COOLDOWN             = 60.0   # global cooldown for anomaly triggers (retry, etc.)
 TURN_COOLDOWN        = 20.0   # per-session cooldown for turn_complete commentary
-RATE_LIMIT_WINDOW    = 600.0  # 10-minute sliding window
-RATE_LIMIT_THRESHOLD = 2      # lowered: 2 rate limits in window is already notable
 TOKEN_BLOAT_THRESHOLD = 80000
 RETRY_THRESHOLD      = 3   # same tool N times in a row
 READ_HEAVY_THRESHOLD = 5   # lowered: 5 consecutive reads (was 9, unreachable in practice)
@@ -324,7 +321,6 @@ def _reporting_mode() -> str:
 def main() -> None:
     feed_offset: int = 0
     last_comment_ts: float = 0.0
-    rate_limit_times: collections.deque = collections.deque()
     tool_errors: Dict[str, list] = {}
 
     # Per-session tool sequence: {session_id: deque of (timestamp, tool_name)}
@@ -345,12 +341,6 @@ def main() -> None:
 
     # Last 3 physical actions Vexil used — injected into prompt to prevent repetition
     recent_actions: collections.deque = collections.deque(maxlen=3)
-
-    # ── Cross-session memory lint state ───────────────────────────────────────
-    # id → [(session_id, ts)] — detect same ID written in 2+ sessions within 60s
-    memory_id_writes: Dict[str, list] = {}
-    # violation_key → {session_ids} — detect same routing violation in 2+ sessions
-    memory_routing_sessions: Dict[str, set] = {}
 
     # Seed offset — skip events from before this daemon started
     try:
@@ -528,9 +518,6 @@ def main() -> None:
                 # Don't add to sequences or recent_activity (no hint/context).
                 tools_since_comment += 1
 
-            elif etype == 'rate_limit':
-                rate_limit_times.append(ets)
-
             elif etype == 'tool_error':
                 tool  = entry.get('tool', '?')
                 error = entry.get('error', '')[:40]
@@ -547,24 +534,6 @@ def main() -> None:
                         trigger = 'token_bloat'
                         trigger_data = {'tokens': tokens, 'session_id': sid}
 
-            elif etype == 'memory_lint':
-                # Cross-session lint events from memory_lint.py hook
-                mid       = entry.get('mem_id', '')
-                violation = entry.get('violation', 'clean')
-                if mid:
-                    if mid not in memory_id_writes:
-                        memory_id_writes[mid] = []
-                    memory_id_writes[mid].append((sid, ets))
-                if 'block_urn_routing' in violation:
-                    memory_routing_sessions.setdefault('block_urn_routing', set()).add(sid)
-
-        # ── Prune stale memory lint state ────────────────────────────────────
-        # Keep only recent entries so memory doesn't grow unbounded
-        for mid in list(memory_id_writes.keys()):
-            memory_id_writes[mid] = [(s, t) for s, t in memory_id_writes[mid]
-                                     if (now - t) < 120.0]
-            if not memory_id_writes[mid]:
-                del memory_id_writes[mid]
 
         # ── Per-turn commentary (native buddy cadence) ───────────────────────
         # Fires once per completed turn if the session did real work (tool_count > 0).
@@ -599,11 +568,6 @@ def main() -> None:
                         fired_patterns[pat_key] = now
                         break
 
-        # Prune stale rate limit timestamps
-        cutoff = now - RATE_LIMIT_WINDOW
-        while rate_limit_times and rate_limit_times[0] < cutoff:
-            rate_limit_times.popleft()
-
         # Activity tick — fires when enough tool events have accumulated since last comment
         if trigger is None and tools_since_comment >= ACTIVITY_TRIGGER_THRESHOLD:
             if (now - last_comment_ts) > COOLDOWN:
@@ -622,12 +586,6 @@ def main() -> None:
                     trigger = 'session_activity'
                     trigger_data = {'summary': '; '.join(summary_parts)}
 
-        # Rate limit flood
-        if trigger is None and len(rate_limit_times) >= RATE_LIMIT_THRESHOLD:
-            if (now - last_comment_ts) > COOLDOWN:
-                trigger = 'rate_limit_flood'
-                trigger_data = {'count': len(rate_limit_times)}
-
         # Cross-session error
         if trigger is None:
             for key, sessions in tool_errors.items():
@@ -635,29 +593,6 @@ def main() -> None:
                     if (now - last_comment_ts) > COOLDOWN:
                         trigger = 'cross_session_error'
                         trigger_data = {'key': key, 'sessions': list(set(sessions))[:3]}
-                        break
-
-        # Memory ID collision — same ID written in 2+ sessions within 60s
-        if trigger is None:
-            for mid, entries in list(memory_id_writes.items()):
-                recent = [(s, t) for s, t in entries if (now - t) < 60.0]
-                sessions = {s for s, _ in recent}
-                if len(sessions) >= 2 and (now - last_comment_ts) > COOLDOWN:
-                    trigger = 'memory_id_collision'
-                    trigger_data = {'id': mid, 'sessions': list(sessions)[:3]}
-                    memory_id_writes.pop(mid, None)
-                    break
-
-        # Memory routing collision — same UNR routing violation in 2+ sessions
-        if trigger is None:
-            for vkey, sessions in list(memory_routing_sessions.items()):
-                if len(sessions) >= 2 and (now - last_comment_ts) > COOLDOWN:
-                    pat_key = f'routing:{vkey}'
-                    if pat_key not in fired_patterns:
-                        trigger = 'memory_routing_collision'
-                        trigger_data = {'sessions': list(sessions)[:3]}
-                        fired_patterns[pat_key] = now
-                        memory_routing_sessions.pop(vkey, None)
                         break
 
         if trigger is None:
@@ -716,21 +651,6 @@ def main() -> None:
                 f"Lost or avoiding the actual change?"
             )
 
-        elif trigger == 'rate_limit_flood':
-            count = trigger_data['count']
-            window_min = int(RATE_LIMIT_WINDOW / 60)
-            activity_parts = []
-            for sess_id, acts in recent_activity.items():
-                recent = [(t, h) for ts_e, t, h, *_ in acts if (now - ts_e) <= ACTIVITY_RECENCY_WINDOW]
-                if recent:
-                    pairs = [f"{t}({h})" if h else t for t, h in recent[-3:]]
-                    activity_parts.append(f"[{sess_id}] {' → '.join(pairs)}")
-            activity_ctx = ('; '.join(activity_parts)) if activity_parts else 'no context'
-            prompt = (
-                f"{count} rate limits in {window_min} minutes. Activity: {activity_ctx}. "
-                f"What's the load problem — stick to what the tools show."
-            )
-
         elif trigger == 'cross_session_error':
             key = trigger_data['key']
             sessions = trigger_data['sessions']
@@ -753,22 +673,6 @@ def main() -> None:
                 f"Session {sid} burned {tokens:,} tokens in a single turn. "
                 f"Comment on what this likely means about how that session is "
                 f"being used."
-            )
-
-        elif trigger == 'memory_id_collision':
-            mid      = trigger_data['id']
-            sessions = trigger_data['sessions']
-            prompt = (
-                f"Memory ID '{mid}' written in {len(sessions)} concurrent sessions "
-                f"({', '.join(sessions[:2])}). "
-                f"Which one owns it — or is one a stale retry?"
-            )
-
-        elif trigger == 'memory_routing_collision':
-            sessions = trigger_data['sessions']
-            prompt = (
-                f"UNR routing violation blocked in {len(sessions)} concurrent sessions. "
-                f"Systemic — check CLAUDE.md routing rule or template."
             )
 
         else:
