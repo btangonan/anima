@@ -401,7 +401,6 @@ export function handleEvent(id, event) {
       pushMessage(id, { type: 'system-msg', text: s._rateLimitCount > 1
         ? `\u29d6 rate limited \u00d7${s._rateLimitCount} \u00b7 retrying\u2026`
         : '\u29d6 rate limited \u00b7 retrying\u2026' });
-      addToVexilLog('warn', `rate limit hit #${s._rateLimitCount} \u00b7 session ${id.slice(0,8)}`);
       appendVexilFeed({ type: 'rate_limit', session_id: id.slice(0, 8), retry: s._rateLimitCount });
       break;
 
