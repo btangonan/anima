@@ -205,7 +205,7 @@ function formatTokens(n) {
 // ── Exports ────────────────────────────────────────────────
 export { SPRITE_DATA, IDENTITY_SEQ_KEY };
 export { sessions, sessionLogs, syncOmiSessions };
-export { rollFamiliarBones, assignFamiliarHue, releaseFamiliarHue, FAMILIAR_SPECIES, FAMILIAR_HUE_PALETTE };
+export { FAMILIAR_HUE_PALETTE };
 export { isSelfDirectory, formatTokens };
 
 // activeSessionId as getter/setter — ES modules cannot export mutable let bindings
