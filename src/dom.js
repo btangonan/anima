@@ -1,7 +1,12 @@
 // ── DOM utilities + cache ─────────────────────────────────
 
-const { parse: mdParse } = window.marked;
+const _mdParse = window.marked.parse.bind(window.marked);
 window.marked.setOptions({ breaks: true, gfm: true });
+
+// Sanitize marked output before DOM injection — prevents XSS from LLM-injected HTML
+function mdParse(text) {
+  return window.DOMPurify.sanitize(_mdParse(text));
+}
 
 // DOM cache — populated by initDOM()
 export const $ = {};

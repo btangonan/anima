@@ -90,6 +90,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!link) return;
     const href = link.getAttribute('href');
     if (!href || href.startsWith('#')) return;
+    if (!href.startsWith('https://') && !href.startsWith('http://')) return;
     e.preventDefault();
     window.__TAURI__.opener.openUrl(href);
   });
