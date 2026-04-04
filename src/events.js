@@ -6,6 +6,7 @@ import { pushMessage, updateWorkingCursor, updateCursorPhase, scheduleScroll } f
 import { updateSessionCard } from './cards.js';
 import { pxLog } from './logger.js';
 import { addToVexilLog, getBuddyTrigger, triggerAsciiAction } from './companion.js';
+import { accrueNimForSession } from './nim.js';
 
 // ── Vexil Master feed (proactive cross-session commentary) ──────────────
 const VEXIL_FEED_PATH = '/tmp/vexil_feed.jsonl';
@@ -285,6 +286,7 @@ export function handleEvent(id, event) {
       const u = event.usage || s._lastMsgUsage;
       if (u) s.tokens += (u.input_tokens || 0) + (u.output_tokens || 0);
       else s.tokens += s._liveTokens; // result.usage absent and no assistant usage either
+      accrueNimForSession(s); // award nim for newly-spent tokens
 
       // Accumulate output tokens for perf (multiple result events per user turn)
       if (u?.output_tokens) s._perfOutTokens = (s._perfOutTokens || 0) + u.output_tokens;

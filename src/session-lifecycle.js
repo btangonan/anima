@@ -56,6 +56,7 @@ function createSession(cwd, opts = {}) {
     readOnly: !!opts.readOnly,
     unread: false,
     tokens: 0,
+    _nimTokensAccrued: 0,  // tracks tokens already converted to nim (prevents double-award)
     _liveTokens: 0,
     _dotsPhase: 0,
     _pendingQueue: [],

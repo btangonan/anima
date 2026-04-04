@@ -1904,13 +1904,80 @@ body.no-session-active #btn-new-session.plus-inverted {
   color: var(--accent);
   border-color: var(--accent);
 }
-.fc-reroll-btn--broke {
+.fc-reroll-btn--locked,
+.fc-reroll-btn:disabled {
+  color: #333;
+  border-color: #252525;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Re-roll confirm dialog */
+.fc-confirm {
+  background: var(--bg-panel, #111);
+  border: 1px solid var(--border-hi);
+  padding: 22px 24px 18px;
+  min-width: 280px;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.fc-confirm-title {
+  font-size: var(--fs-base);
+  color: var(--accent);
+  letter-spacing: 1.5px;
+}
+.fc-confirm-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fc-confirm-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-xs);
+}
+.fc-confirm-label {
+  color: var(--text-mid);
+  letter-spacing: 0.5px;
+}
+.fc-confirm-val {
+  color: var(--accent);
+  letter-spacing: 0.5px;
+}
+.fc-confirm-warning {
+  font-size: var(--fs-xs);
+  color: #c0392b;
+  letter-spacing: 0.3px;
+  border-left: 2px solid #c0392b;
+  padding-left: 8px;
+}
+.fc-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.fc-confirm-btn {
+  background: none;
+  border: 1px solid var(--border-hi);
+  color: var(--text-mid);
+  font-family: var(--font);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.08em;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+}
+.fc-confirm-btn--go {
   color: #c0392b;
   border-color: #c0392b;
-  animation: fc-shake 0.25s ease;
 }
-@keyframes fc-shake {
-  0%,100%{transform:translateX(0)}
-  25%{transform:translateX(-4px)}
-  75%{transform:translateX(4px)}
+.fc-confirm-btn--go:hover {
+  background: #c0392b;
+  color: #fff;
+}
+.fc-confirm-btn--cancel:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }

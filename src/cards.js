@@ -7,12 +7,12 @@ import {
   getActiveSessionId, setActiveSessionId, formatTokens, syncOmiSessions,
   rollFamiliarBones, incrementFamiliarReroll,
 } from './session.js';
+import { getNimBalance, spendNim, REROLL_NIM_COST } from './nim.js';
 import { renderFrame } from './ascii-sprites.js';
 import { killSession, IDLE_STALE_MS } from './session-lifecycle.js';
 import { renderMessageLog, updateWorkingCursor, setPinToBottom } from './messages.js';
 
 // ── Re-roll gate — set > 0 to require tokens; 0 = open ───────────────────────
-const REROLL_TOKEN_COST = 0; // set > 0 to require tokens; 0 = gate open for testing
 
 // ── Familiar Profile Card ─────────────────────────────────
 
@@ -148,26 +148,16 @@ export function showFamiliarCard(sessionId) {
   const rerollSlot = document.createElement('div');
   rerollSlot.className = 'fc-reroll-slot';
 
+  const canAfford = REROLL_NIM_COST === 0 || getNimBalance() >= REROLL_NIM_COST;
   const rerollBtn = document.createElement('button');
-  rerollBtn.className = 'fc-reroll-btn';
-  rerollBtn.textContent = REROLL_TOKEN_COST > 0 ? `RE-ROLL · ${formatTokens(REROLL_TOKEN_COST)}` : 'RE-ROLL';
+  rerollBtn.className = 'fc-reroll-btn' + (canAfford ? '' : ' fc-reroll-btn--locked');
+  rerollBtn.disabled = !canAfford;
+  rerollBtn.textContent = REROLL_NIM_COST > 0 ? `RE-ROLL · ${REROLL_NIM_COST} @NIM@` : 'RE-ROLL';
+  if (!canAfford) rerollBtn.title = `Need ${REROLL_NIM_COST} @NIM@ — you have ${getNimBalance()}`;
   rerollBtn.addEventListener('click', () => {
-    const s = sessions.get(sessionId);
-    if (!s) return;
-    if (REROLL_TOKEN_COST > 0 && (s.tokens ?? 0) < REROLL_TOKEN_COST) {
-      rerollBtn.classList.add('fc-reroll-btn--broke');
-      setTimeout(() => rerollBtn.classList.remove('fc-reroll-btn--broke'), 600);
-      return;
-    }
-    if (REROLL_TOKEN_COST > 0) s.tokens = Math.max(0, (s.tokens ?? 0) - REROLL_TOKEN_COST);
-    const count = incrementFamiliarReroll(s.cwd);
-    s.familiar = rollFamiliarBones(s.cwd, count);
-    // Refresh sidebar sprite
-    const wrap = document.getElementById(`card-sprite-wrap-${sessionId}`);
-    if (wrap) _buildSpriteWrap(wrap, sessionId);
-    // Reopen profile card with new familiar
+    if (!canAfford) return;
     hideFamiliarCard();
-    showFamiliarCard(sessionId);
+    showRerollConfirm(sessionId);
   });
   rerollSlot.appendChild(rerollBtn);
   footer.appendChild(rerollSlot);
@@ -205,6 +195,72 @@ export function hideFamiliarCard() {
     clearInterval(_profileAnimId);
     _profileAnimId = null;
   }
+}
+
+// ── Re-roll confirm dialog ────────────────────────────────
+
+let _rerollOverlayEl = null;
+
+function _hideRerollConfirm() {
+  if (_rerollOverlayEl) {
+    if (_rerollOverlayEl._keyHandler) document.removeEventListener('keydown', _rerollOverlayEl._keyHandler);
+    _rerollOverlayEl.remove();
+    _rerollOverlayEl = null;
+  }
+}
+
+function showRerollConfirm(sessionId) {
+  _hideRerollConfirm();
+
+  const bal  = getNimBalance();
+  const cost = REROLL_NIM_COST;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'fc-overlay';
+  overlay.addEventListener('click', e => { if (e.target === overlay) _hideRerollConfirm(); });
+
+  const dialog = document.createElement('div');
+  dialog.className = 'fc-confirm';
+
+  dialog.innerHTML = `
+    <div class="fc-confirm-title">RE-ROLL FAMILIAR?</div>
+    <div class="fc-confirm-rows">
+      <div class="fc-confirm-row">
+        <span class="fc-confirm-label">COST</span>
+        <span class="fc-confirm-val">${cost} @NIM@</span>
+      </div>
+      <div class="fc-confirm-row">
+        <span class="fc-confirm-label">YOUR BALANCE</span>
+        <span class="fc-confirm-val">${bal} @NIM@</span>
+      </div>
+    </div>
+    <div class="fc-confirm-warning">Your current familiar will be lost forever.</div>
+    <div class="fc-confirm-actions">
+      <button class="fc-confirm-btn fc-confirm-btn--go">CONFIRM RE-ROLL</button>
+      <button class="fc-confirm-btn fc-confirm-btn--cancel">CANCEL</button>
+    </div>
+  `;
+
+  dialog.querySelector('.fc-confirm-btn--cancel').addEventListener('click', _hideRerollConfirm);
+  dialog.querySelector('.fc-confirm-btn--go').addEventListener('click', () => {
+    if (!spendNim(cost)) return; // double-check (balance may have changed)
+    const s = sessions.get(sessionId);
+    if (!s) { _hideRerollConfirm(); return; }
+    const count = incrementFamiliarReroll(s.cwd);
+    s.familiar = rollFamiliarBones(s.cwd, count);
+    const wrap = document.getElementById(`card-sprite-wrap-${sessionId}`);
+    if (wrap) _buildSpriteWrap(wrap, sessionId);
+    _hideRerollConfirm();
+    showFamiliarCard(sessionId);
+  });
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  _rerollOverlayEl = overlay;
+
+  const onKey = e => { if (e.key === 'Escape') _hideRerollConfirm(); };
+  document.addEventListener('keydown', onKey);
+  overlay._keyHandler = onKey;
 }
 
 // ─────────────────────────────────────────────────────────
