@@ -30,11 +30,13 @@ mcp__gemini-memory__memory_query {
 }
 ```
 
-## 🔍 Retrieval Checklist Before Coding
-1. Query Chroma for related memories.
-2. Check repo files that match the task.
-3. List open PRs or issues that touch the same area.
-4. Only then propose changes.
+## 🔴 Retrieval Order (MANDATORY — memory before files)
+**NEVER read files to orient yourself before querying memory first.**
+1. `mcp__gemini-memory__memory_query` — collection `pixel_terminal` + `"*"` for cross-project. Always first.
+2. Only then read repo files that match the task.
+3. Only then propose changes.
+
+Skipping memory and reading files cold = wrong order. If you catch yourself doing it, stop and query memory first.
 
 ## 📝 Memory Checkpoint Rules
 
