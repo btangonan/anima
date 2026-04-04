@@ -124,7 +124,6 @@ def _spawn_oracle_process() -> Tuple[subprocess.Popen, queue.Queue]:
     proc = subprocess.Popen(
         ['claude', '-p', '--bare', '--input-format', 'stream-json',
          '--output-format', 'stream-json', '--verbose',
-         '--permission-mode', 'bypassPermissions',
          '--model', 'claude-sonnet-4-6'],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
