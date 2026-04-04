@@ -662,13 +662,25 @@ canvas.sprite-canvas {
 }
 
 .sprite-wrap {
-  width: 48px;
-  height: 48px;
+  width: 60px;
+  height: 60px;
   flex-shrink: 0;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.sprite-wrap pre.familiar-pre {
+  font-size: 8px;
+  line-height: 1.1;
+  margin: 0;
+  padding: 0;
+  white-space: pre;
+  font-family: var(--font-mono);
+  color: var(--familiar-hue, #FFDD44);
+  user-select: none;
+  text-align: center;
 }
 
 /* ── Confirm modal ───────────────────────── */

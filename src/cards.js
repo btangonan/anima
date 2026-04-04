@@ -3,9 +3,10 @@
 import { $, esc, showConfirm } from './dom.js';
 import { exitHistoryView } from './history.js';
 import {
-  sessions, sessionLogs, spriteRenderers, SpriteRenderer,
+  sessions, sessionLogs,
   getActiveSessionId, setActiveSessionId, formatTokens, syncOmiSessions
 } from './session.js';
+import { renderFrame } from './ascii-sprites.js';
 import { killSession, IDLE_STALE_MS } from './session-lifecycle.js';
 import { renderMessageLog, updateWorkingCursor, setPinToBottom } from './messages.js';
 
@@ -39,15 +40,29 @@ export function renderSessionCard(id) {
   });
   $.sessionList.appendChild(card);
 
+  // Inject ASCII familiar into the sprite-wrap
   const wrap = document.getElementById(`card-sprite-wrap-${id}`);
-  spriteRenderers.set(id, new SpriteRenderer(wrap, s.charIndex));
+  if (wrap && s.familiar) {
+    wrap.style.setProperty('--familiar-hue', s.familiarHue ?? '#FFDD44');
+    const pre = document.createElement('pre');
+    pre.className = 'familiar-pre';
+    pre.textContent = renderFrame(s.familiar.species, 0, s.familiar.eye, s.familiar.hat).join('\n');
+    wrap.appendChild(pre);
+  }
+}
+
+export function updateFamiliarDisplay(id, frameIdx) {
+  const s = sessions.get(id);
+  if (!s?.familiar) return;
+  const wrap = document.getElementById(`card-sprite-wrap-${id}`);
+  const pre = wrap?.querySelector('.familiar-pre');
+  if (!pre) return;
+  pre.textContent = renderFrame(s.familiar.species, frameIdx, s.familiar.eye, s.familiar.hat).join('\n');
 }
 
 export function updateSessionCard(id) {
   const s = sessions.get(id);
   if (!s) return;
-
-  spriteRenderers.get(id)?.setStatus(s.status);
 
   const statusEl = document.getElementById(`card-status-${id}`);
   if (statusEl) {

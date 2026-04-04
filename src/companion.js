@@ -648,23 +648,6 @@ export async function initCompanion() {
       buddyData.companionSeed = COMPANION_SEED;
       await invoke('write_file_as_text', { path: buddyPath, content: JSON.stringify(buddyData, null, 2) });
 
-      // Re-assign any project that held the old species so it doesn't
-      // collide with the new buddy on next session open
-      if (oldSpecies && oldSpecies !== derivedSpecies) {
-        try {
-          const charPath = `${home}/${PROJECT_CHARS_FILENAME}`;
-          const charRaw  = await invoke('read_file_as_text', { path: charPath });
-          const chars    = JSON.parse(charRaw);
-          const dirty    = Object.entries(chars).filter(([, v]) => v === oldSpecies);
-          if (dirty.length > 0) {
-            dirty.forEach(([k]) => delete chars[k]);
-            _projectCharsSaveQueue = _projectCharsSaveQueue.then(async () => {
-              await invoke('write_file_as_text', { path: charPath, content: JSON.stringify(chars, null, 2) });
-            });
-            await _projectCharsSaveQueue;
-          }
-        } catch { /* project-chars.json may not exist yet — fine */ }
-      }
       } // end if species mismatch
     } // end else (not syncedFrom claude-code)
   } catch (e) {

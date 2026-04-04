@@ -13,7 +13,7 @@ import {
 } from './session-lifecycle.js';
 import { pushMessage, updateWorkingCursor, setPinToBottom, renderMessageLog, createMsgEl } from './messages.js';
 import { handleEvent, setStatus, setEventDeps } from './events.js';
-import { renderSessionCard, updateSessionCard, setActiveSession, showEmptyState } from './cards.js';
+import { renderSessionCard, updateSessionCard, setActiveSession, showEmptyState, updateFamiliarDisplay } from './cards.js';
 import { initVoice, isSettingsOpen, setSettingsOpen, settingsUpdate } from './voice.js';
 import { initAttachments } from './attachments.js';
 import {
@@ -68,13 +68,16 @@ window.addEventListener('DOMContentLoaded', () => {
   initHistory();
   initCompanion();
 
-  // Animate working badge: per-session phase cycles "" "." ".." "..." every 400ms
+  // Animate working badge + familiar frames every 400ms
   setInterval(() => {
     sessions.forEach((s, id) => {
       if (s.status === 'working' && !s.unread) {
         s._dotsPhase = (s._dotsPhase + 1) % 4;
         const el = document.getElementById(`card-status-${id}`);
         if (el) el.textContent = '.'.repeat(s._dotsPhase);
+        // Advance familiar frame animation
+        s._familiarFrame = ((s._familiarFrame ?? 0) + 1) % 3;
+        updateFamiliarDisplay(id, s._familiarFrame);
       }
     });
   }, 400);
