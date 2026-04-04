@@ -80,9 +80,13 @@ function initVexilTabs() {
     if ($.voiceLog)        $.voiceLog.classList.toggle('hidden',        target !== 'voice');
     if ($.vexilLog)        $.vexilLog.classList.toggle('hidden',        target !== 'vexil');
     if ($.attachmentsPanel) $.attachmentsPanel.classList.toggle('hidden', target !== 'files');
-    // vexil-bio is always visible at bottom — not tab-toggled
+    const bio = document.getElementById('vexil-bio');
+    if (bio) bio.classList.toggle('hidden', target !== 'vexil');
+    const header = document.getElementById('voice-log-header');
+    if (header) header.classList.toggle('oracle-active', target === 'vexil');
     // Only re-render lint log when a session is active — pre-session oracle content must not be wiped
     if (target === 'vexil' && sessions.size > 0) renderVexilLog(getLintLogForSession(getActiveSessionId()));
+    document.dispatchEvent(new CustomEvent('pixel:vexil-tab-changed', { detail: { tab: target } }));
   }
 
   tabs.forEach(btn => btn.addEventListener('click', () => showTab(btn.dataset.vtab)));
@@ -93,6 +97,8 @@ function initVexilTabs() {
   // When user switches session, flip buddy log to that session's entries
   document.addEventListener('pixel:session-changed', (e) => {
     if (_vexilTabActive) renderVexilLog(getLintLogForSession(e.detail.id));
+    const bio = document.getElementById('vexil-bio');
+    if (bio) bio.classList.toggle('hidden', !_vexilTabActive);
   });
 
   // Tab-aware CLR
@@ -208,23 +214,21 @@ function initOraclePreChat() {
 
   let _reqId = Date.now(); // timestamp-based start prevents cross-session req_id=1 collision
   let _pendingReqId  = null;
-  let _pendingMsg    = '';   // user message awaiting oracle response (for history)
   let _thinkingEl    = null;
-  let _history       = [];  // [{role, content}] rolling last 6
 
   function setVisible() {
-    const show = sessions.size === 0 && _vexilTabActive;
+    const show = _vexilTabActive;
     wrap.classList.toggle('hidden', !show);
-    if (show) setTimeout(() => input.focus(), 50);
   }
 
+  const _oracleChatLog = document.getElementById('oracle-chat-log');
   function appendEntry(text, cls) {
-    if (!$.vexilLog) return null;
+    if (!_oracleChatLog) return null;
     const el = document.createElement('div');
     el.className = cls;
     el.textContent = text;
-    $.vexilLog.appendChild(el);
-    $.vexilLog.scrollTop = $.vexilLog.scrollHeight;
+    _oracleChatLog.appendChild(el);
+    _oracleChatLog.scrollTop = _oracleChatLog.scrollHeight;
     return el;
   }
 
@@ -238,12 +242,15 @@ function initOraclePreChat() {
 
     const reqId = ++_reqId;
     _pendingReqId = reqId;
-    _pendingMsg = text;
 
     try {
       await invoke('write_file_as_text', {
         path: ORACLE_QUERY_PATH,
-        content: JSON.stringify({ message: text, history: _history.slice(-6), req_id: reqId }),
+        content: JSON.stringify({
+          message: text,
+          req_id: reqId,
+          sessions: [...sessions.values()].map(s => ({ name: s.name, cwd: s.cwd })),
+        }),
       });
     } catch (_) {
       if (_thinkingEl) { _thinkingEl.remove(); _thinkingEl = null; }
@@ -261,12 +268,8 @@ function initOraclePreChat() {
     const el = document.createElement('div');
     el.className = 'vexil-entry vexil-entry--buddy';
     el.innerHTML = `<span class="vexil-ts">[${ts}]</span>${escapeHtml(entry.msg)}`;
-    $.vexilLog?.appendChild(el);
-    $.vexilLog.scrollTop = $.vexilLog.scrollHeight;
-
-    _history.push({ role: 'user', content: _pendingMsg });
-    _history.push({ role: 'oracle', content: entry.msg });
-    if (_history.length > 6) _history = _history.slice(-6);
+    _oracleChatLog?.appendChild(el);
+    if (_oracleChatLog) _oracleChatLog.scrollTop = _oracleChatLog.scrollHeight;
   });
 
   input.addEventListener('keydown', (e) => {
@@ -275,6 +278,7 @@ function initOraclePreChat() {
   $.oracleSend?.addEventListener('click', submit);
 
   document.addEventListener('pixel:session-changed', setVisible);
+  document.addEventListener('pixel:vexil-tab-changed', setVisible);
   setVisible();
 }
 
@@ -395,6 +399,6 @@ export function initVoice() {
   initVexilTabs();
   setVexilLogListener(renderVexilLog);
 
-  // Oracle pre-session chat (visible when no sessions are open)
+  // Oracle pre-session chat
   initOraclePreChat();
 }

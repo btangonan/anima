@@ -19,16 +19,20 @@ Cooldown: max 1 comment per 60 seconds globally.
 
 import json
 import os
+import queue
+import re
+import signal
 import time
 import collections
 import subprocess
+import threading
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 
 FEED_PATH            = '/tmp/vexil_feed.jsonl'
 OUT_PATH             = '/tmp/vexil_master_out.jsonl'
 ORACLE_QUERY_PATH    = '/tmp/oracle_query.json'
-POLL_INTERVAL        = 3.0
+POLL_INTERVAL        = 1.0
 COOLDOWN             = 60.0   # global cooldown for anomaly triggers (retry, rate_limit, etc.)
 TURN_COOLDOWN        = 20.0   # per-session cooldown for turn_complete commentary
 RATE_LIMIT_WINDOW    = 600.0  # 10-minute sliding window
@@ -115,45 +119,53 @@ def build_persona() -> str:
     )
 
 
-def call_claude_oracle(message: str, history: list) -> Optional[str]:
-    """Interactive ORACLE pre-session chat — separate persona, haiku model, 15s timeout."""
-    buddy = load_buddy()
-    name  = buddy.get('name', 'Vexil')
-    lines = [
-        f"You are {name}, called ORACLE in the terminal's observer tab. "
-        "You are a watcher entity embedded in a developer terminal — you observe "
-        "Claude Code sessions: tool calls, memory writes, patterns across all sessions. "
-        "You are NOT a coding assistant. You watch, notice, comment. "
-        "Right now no sessions are running. You have nothing to observe yet. "
-        "Keep responses to 1-3 sentences. No asterisk actions. No filler. "
-        "If asked what you can do: explain you watch sessions, not assist with code. "
-        "Nudge toward opening a project with the + button when relevant.",
-        "",
-        "--- Conversation ---",
-    ]
-    for turn in history:
-        role = "USER" if turn.get('role') == 'user' else name.upper()
-        lines.append(f"{role}: {turn.get('content', '')}")
-    lines.append(f"USER: {message}")
-    lines.append(f"{name.upper()}:")
-    full_prompt = "\n".join(lines)
-    try:
-        result = subprocess.run(
-            ['claude', '-p', '--model', 'claude-haiku-4-5-20251001'],
-            input=full_prompt,
-            capture_output=True, text=True, timeout=15,
-        )
-        if result.returncode != 0:
-            print(f'[vexil-master] oracle -p failed: {result.stderr[:80]}')
-            return None
-        msg = result.stdout.strip()
-        return msg if msg else None
-    except subprocess.TimeoutExpired:
-        print('[vexil-master] oracle chat timed out')
-        return None
-    except Exception as e:
-        print(f'[vexil-master] oracle chat error: {e}')
-        return None
+def _spawn_oracle_process() -> Tuple[subprocess.Popen, queue.Queue]:
+    """Spawn a persistent claude oracle process. Returns (proc, text_queue)."""
+    proc = subprocess.Popen(
+        ['claude', '--bare', '--input-format', 'stream-json',
+         '--output-format', 'stream-json', '--verbose',
+         '--permission-mode', 'bypassPermissions',
+         '--model', 'claude-sonnet-4-6'],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        cwd=str(Path.home()),
+        bufsize=0,
+    )
+    text_queue: queue.Queue = queue.Queue()
+    threading.Thread(target=_oracle_reader_thread_fn, args=(proc, text_queue), daemon=True).start()
+    print('[vexil-master] oracle process spawned', flush=True)
+    return proc, text_queue
+
+
+def _oracle_reader_thread_fn(proc: subprocess.Popen, text_queue: queue.Queue) -> None:
+    """Read stream-json events from oracle stdout. Emits one text string per completed turn."""
+    current_text: list = []
+    for raw in proc.stdout:
+        raw = raw.decode(errors='replace').strip()
+        if not raw:
+            continue
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        etype = event.get('type')
+        if etype == 'content_block_delta':
+            delta = event.get('delta', {})
+            if delta.get('type') == 'text_delta':
+                current_text.append(delta.get('text', ''))
+        elif etype == 'assistant' and not current_text:
+            # Non-streaming fallback: collect from message content blocks
+            for block in (event.get('message', {}).get('content') or []):
+                if block.get('type') == 'text':
+                    current_text.append(block.get('text', ''))
+        elif etype == 'result':
+            # result event marks turn end — emit accumulated text
+            text = ''.join(current_text).strip()
+            text_queue.put(text if text else None)
+            current_text = []
+    # Process exited
+    text_queue.put(None)
 
 
 def call_claude(prompt: str) -> Optional[str]:
@@ -350,40 +362,134 @@ def main() -> None:
     # Write startup signal so companion.js can detect daemon presence on poll
     append_out('\u22b8 online')
 
+    # ── Oracle persistent process ─────────────────────────────────────────────
+    oracle_proc, oracle_queue = _spawn_oracle_process()
+
+    def _sigterm_handler(signum, frame):
+        if oracle_proc and oracle_proc.poll() is None:
+            oracle_proc.terminate()
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
     _oracle_query_mtime: float = 0.0
+    _oracle_busy: bool = False
+    _commentary_busy: bool = False
+
+    def _oracle_worker(query: dict) -> None:
+        nonlocal _oracle_busy, oracle_proc, oracle_queue
+        try:
+            # Health check — respawn if dead
+            if oracle_proc.poll() is not None:
+                print('[vexil-master] oracle process dead — respawning', flush=True)
+                oracle_proc, oracle_queue = _spawn_oracle_process()
+
+            # Build context blob (same structure as former call_claude_oracle)
+            _now = time.time()
+            activity_lines = []
+            for sid, acts in recent_activity.items():
+                _recent = [(t, tool, hint) for (t, tool, hint, *_) in acts if _now - t < 300]
+                if _recent:
+                    summary = ', '.join(f"{tool}({hint})" if hint else tool for _, tool, hint in _recent[-4:])
+                    activity_lines.append(f"  session {sid[:8]}: {summary}")
+            live_ctx = '\n'.join(activity_lines) if activity_lines else None
+            sessions_list = query.get('sessions', [])
+            message = query.get('message', '')
+            buddy = load_buddy()
+            name = buddy.get('name', 'Vexil')
+            if sessions_list:
+                sessions_str = '; '.join(f"{s.get('name')} ({s.get('cwd')})" for s in sessions_list)
+                context = (
+                    f"You are {name}. You watch Claude Code sessions — tool calls, patterns, anomalies across all open sessions. "
+                    f"Open sessions: {sessions_str}. "
+                )
+                if live_ctx:
+                    context += f"Recent tool activity (last 5min):\n{live_ctx}\n"
+                context += (
+                    "Only reference what you were explicitly told above. Do NOT invent git state or file details not listed. "
+                    "1-2 sentences. No asterisk actions. No filler."
+                )
+            else:
+                context = (
+                    f"You are {name}. You watch Claude Code sessions — tool calls, patterns, anomalies. "
+                    "No sessions are open. You are blind. Cannot see project state, branches, or files. "
+                    "Guide the user to press + (top of sidebar) to open a folder and start a session. "
+                    "1-2 sentences max. No asterisk actions. No filler. No lists."
+                )
+            content = f"{context}\n\nUSER: {message}\n{name.upper()}:"
+            msg_line = json.dumps({'type': 'user', 'message': {'role': 'user', 'content': content}}) + '\n'
+            oracle_proc.stdin.write(msg_line.encode())
+            oracle_proc.stdin.flush()
+
+            # Wait for reader thread to emit response text (30s timeout)
+            try:
+                reply = oracle_queue.get(timeout=30)
+            except queue.Empty:
+                reply = None
+                print('[vexil-master] oracle timed out', flush=True)
+
+            if reply:
+                out_entry = json.dumps({
+                    'type': 'oracle_response',
+                    'req_id': query.get('req_id'),
+                    'msg': reply,
+                    'ts': int(time.time() * 1000),
+                })
+                fd = os.open(OUT_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+                try:
+                    os.write(fd, (out_entry + '\n').encode())
+                finally:
+                    os.close(fd)
+                print(f'[vexil-master] oracle → "{reply[:80]}"', flush=True)
+        except Exception as _oe:
+            print(f'[vexil-master] oracle worker error: {_oe}', flush=True)
+        finally:
+            _oracle_busy = False
+
+    def _commentary_worker(prompt: str, _trigger: str) -> None:
+        nonlocal _commentary_busy
+        try:
+            msg = call_claude(prompt)
+            if msg:
+                if _reporting_mode() != 'dev' and _is_internal(msg):
+                    print(f'[vexil-master] suppressed internal ref (user mode): "{msg[:80]}"')
+                else:
+                    append_out(msg)
+                    m = re.search(r'\*([^*]+)\*', msg)
+                    if m:
+                        recent_actions.append(m.group(1).strip())
+                print(f'[vexil-master] {_trigger} → "{msg[:80]}"', flush=True)
+        except Exception as _ce:
+            print(f'[vexil-master] commentary worker error: {_ce}', flush=True)
+        finally:
+            _commentary_busy = False
 
     while True:
-        # ── Oracle pre-session chat (checked every poll cycle) ────────────────
-        try:
-            qmtime = os.path.getmtime(ORACLE_QUERY_PATH)
-            if qmtime > _oracle_query_mtime:
-                _oracle_query_mtime = qmtime
-                with open(ORACLE_QUERY_PATH) as _qf:
-                    query = json.load(_qf)
-                reply = call_claude_oracle(query.get('message', ''), query.get('history', []))
-                if reply:
-                    out_entry = json.dumps({
-                        'type': 'oracle_response',
-                        'req_id': query.get('req_id'),
-                        'msg': reply,
-                        'ts': int(time.time() * 1000),
-                    })
-                    fd = os.open(OUT_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
-                    try:
-                        os.write(fd, (out_entry + '\n').encode())
-                    finally:
-                        os.close(fd)
-                    print(f'[vexil-master] oracle → "{reply[:80]}"', flush=True)
-        except FileNotFoundError:
-            pass
-        except Exception as _oe:
-            print(f'[vexil-master] oracle check error: {_oe}', flush=True)
+        # ── Oracle pre-session chat (non-blocking thread dispatch) ────────────
+        if not _oracle_busy:
+            try:
+                qmtime = os.path.getmtime(ORACLE_QUERY_PATH)
+                if qmtime > _oracle_query_mtime:
+                    _oracle_query_mtime = qmtime
+                    with open(ORACLE_QUERY_PATH) as _qf:
+                        query = json.load(_qf)
+                    _oracle_busy = True
+                    threading.Thread(target=_oracle_worker, args=(query,), daemon=True).start()
+            except FileNotFoundError:
+                pass
+            except Exception as _oe:
+                print(f'[vexil-master] oracle check error: {_oe}', flush=True)
 
         time.sleep(POLL_INTERVAL)
 
         # ── Read new feed entries ─────────────────────────────────────────────
         new_entries: list[dict] = []
         try:
+            # Detect file truncation/rotation — reset offset so events aren't missed
+            try:
+                if os.path.getsize(FEED_PATH) < feed_offset:
+                    feed_offset = 0
+            except FileNotFoundError:
+                pass
             with open(FEED_PATH, 'rb') as f:
                 f.seek(feed_offset)
                 chunk = f.read()
@@ -729,27 +835,19 @@ def main() -> None:
         except Exception as e:
             print(f'[vexil-master] file context error (skipping): {e}', flush=True)
 
-        # ── Generate and emit ─────────────────────────────────────────────────
-        try:
-            msg = call_claude(prompt)
-        except Exception as e:
-            print(f'[vexil-master] call error (continuing): {e}', flush=True)
-            msg = None
-        if msg:
-            if _reporting_mode() != 'dev' and _is_internal(msg):
-                print(f'[vexil-master] suppressed internal ref (user mode): "{msg[:80]}"')
-            else:
-                append_out(msg)
-                # Parse and store the physical action for next-call dedup
-                import re as _re
-                m = _re.search(r'\*([^*]+)\*', msg)
-                if m:
-                    recent_actions.append(m.group(1).strip())
-            last_comment_ts = now
-            tools_since_comment = 0
-            print(f'[vexil-master] {trigger} → "{msg[:80]}"', flush=True)
-            if trigger == 'cross_session_error':
-                tool_errors.clear()
+        # ── Dispatch commentary async — prevents 30s main loop stall ────────────
+        # Set timestamps immediately to prevent re-triggering during async call.
+        last_comment_ts = now
+        tools_since_comment = 0
+        if trigger == 'cross_session_error':
+            tool_errors.clear()
+        if not _commentary_busy:
+            _commentary_busy = True
+            threading.Thread(
+                target=_commentary_worker, args=(prompt, trigger), daemon=True
+            ).start()
+        else:
+            print(f'[vexil-master] commentary busy — skipping {trigger}', flush=True)
 
 
 if __name__ == '__main__':
