@@ -289,6 +289,7 @@ body {
   transition: opacity 0.1s;
 }
 .session-card:hover .session-card-kill { opacity: 1; }
+.session-card:has(.sprite-wrap:hover) .session-card-kill { opacity: 0; pointer-events: none; }
 .session-card-kill:hover { color: var(--accent); }
 
 /* ── Main Pane ─────────────────────────────── */
@@ -710,6 +711,7 @@ canvas.sprite-canvas {
   align-items: center;
   justify-content: center;
   margin-left: 4px;
+  position: relative;
 }
 
 .sprite-wrap pre.familiar-pre {
@@ -1669,28 +1671,29 @@ body.no-session-active #btn-new-session.plus-inverted {
    FAMILIAR PROFILE CARD
    ══════════════════════════════════════════════════════════ */
 
-/* View button — appears on session card hover */
+/* "about me" overlay — appears over the familiar sprite on card hover */
 .familiar-view-btn {
-  background: transparent;
-  border: 1px solid var(--border-hi);
-  color: var(--text-dim);
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  border: none;
+  color: var(--accent);
   font-family: var(--font);
   font-size: var(--fs-xs);
   letter-spacing: 0.5px;
-  padding: 1px 4px;
+  line-height: 1.4;
+  text-align: center;
   cursor: pointer;
-  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.1s, color 0.1s, border-color 0.1s;
+  transition: opacity 0.15s;
 }
-.session-card.card-hover .familiar-view-btn {
+.sprite-wrap:hover .familiar-view-btn {
   opacity: 1;
   pointer-events: auto;
-}
-.familiar-view-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
 }
 
 /* Overlay backdrop */
@@ -1708,7 +1711,6 @@ body.no-session-active #btn-new-session.plus-inverted {
 .fc-card {
   background: var(--bg2);
   border: 1px solid var(--border-hi);
-  border-top: 3px solid var(--fc-rarity-color, #555);
   width: 360px;
   font-family: var(--font);
   font-size: var(--fs-xs);
@@ -1726,7 +1728,7 @@ body.no-session-active #btn-new-session.plus-inverted {
 
 .fc-species {
   font-size: var(--fs-lg);
-  color: var(--accent);
+  color: var(--logo-orange);
   letter-spacing: 1px;
   font-weight: normal;
 }
@@ -1757,7 +1759,7 @@ body.no-session-active #btn-new-session.plus-inverted {
 .fc-sprite {
   font-size: 13px;
   line-height: 1.35;
-  color: var(--familiar-hue, #FFDD44);
+  color: var(--accent);
   white-space: pre;
   margin: 0;
 }

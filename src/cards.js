@@ -16,7 +16,7 @@ const _RARITY_STARS = {
   common: '★', uncommon: '★★', rare: '★★★', epic: '★★★★', legendary: '★★★★★',
 };
 const _RARITY_COLORS = {
-  common: '#555', uncommon: '#4caf50', rare: '#4fc3f7', epic: '#ce93d8', legendary: '#ffd700',
+  common: '#555', uncommon: '#cc7d5e', rare: '#4fc3f7', epic: '#ce93d8', legendary: '#ffd700',
 };
 const _EYE_LABELS = {
   '·': 'dot', '✦': 'star', '×': 'x', '◉': 'circle', '@': 'at', '°': 'degree',
@@ -149,9 +149,6 @@ export function showFamiliarCard(sessionId) {
   document.body.appendChild(overlay);
   _profileCardEl = overlay;
 
-  // Reset hover state on all session cards — overlay prevents mouseleave firing
-  document.querySelectorAll('.session-card.card-hover').forEach(el => el.classList.remove('card-hover'));
-
   // Animate sprite at 500ms (~2 FPS)
   let frame = 0;
   _profileAnimId = setInterval(() => {
@@ -200,22 +197,6 @@ export function renderSessionCard(id) {
     <button class="session-card-kill" title="Kill session" data-id="${id}">\u2715</button>
   `;
 
-  // View button (shown on hover — reveals profile card)
-  if (s.familiar) {
-    const viewBtn = document.createElement('button');
-    viewBtn.className = 'familiar-view-btn';
-    viewBtn.textContent = 'VIEW';
-    viewBtn.title = 'View familiar profile';
-    viewBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      showFamiliarCard(id);
-    });
-    card.querySelector('.session-card-top').appendChild(viewBtn);
-  }
-
-  // Explicit hover state — CSS :hover can get stuck in Tauri when overlay intercepts mouseleave
-  card.addEventListener('mouseenter', () => card.classList.add('card-hover'));
-  card.addEventListener('mouseleave', () => card.classList.remove('card-hover'));
 
   card.addEventListener('click', (e) => {
     if (e.target.closest('.session-card-kill')) return;
@@ -228,7 +209,7 @@ export function renderSessionCard(id) {
   });
   $.sessionList.appendChild(card);
 
-  // Inject ASCII familiar into the sprite-wrap
+  // Inject ASCII familiar + "about me" overlay into the sprite-wrap
   const wrap = document.getElementById(`card-sprite-wrap-${id}`);
   if (wrap && s.familiar) {
     wrap.style.setProperty('--familiar-hue', s.familiarHue ?? '#FFDD44');
@@ -237,6 +218,15 @@ export function renderSessionCard(id) {
     pre.dataset.species = s.familiar.species;
     pre.textContent = renderFrame(s.familiar.species, 0, s.familiar.eye, s.familiar.hat).join('\n');
     wrap.appendChild(pre);
+
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'familiar-view-btn';
+    viewBtn.innerHTML = 'about<br>me';
+    viewBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      showFamiliarCard(id);
+    });
+    wrap.appendChild(viewBtn);
   }
 }
 
