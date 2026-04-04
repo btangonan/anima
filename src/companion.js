@@ -606,10 +606,6 @@ export async function initCompanion() {
   _companionInitialized = true;
   await loadBuddy();
 
-  // Tab is always "BUDDY" — companion name lives in the bio panel, not the tab
-  const vexilTabBtn = document.querySelector('.voice-tab[data-vtab="vexil"]');
-  if (vexilTabBtn) vexilTabBtn.textContent = 'BUDDY';
-
   // Populate bio panel with real buddy identity
   // Species: prefer term extracted from personality text (soul > bones for display)
   const bio = document.getElementById('vexil-bio');
