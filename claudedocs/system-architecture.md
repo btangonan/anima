@@ -135,18 +135,17 @@ A persistent `claude` subprocess that handles the Vexil chat bubble before any s
 ### Why persistent
 Previous design called `subprocess.run(['claude', '-p', ...])` per query — 5–10s cold start every time. Persistent process amortizes startup cost: first response ~2–3s, subsequent ~1–2s (API latency only).
 
-### Spawn args (`vexil_master.py: _spawn_oracle_process`)
+### Spawn args (`vexil_master.py: call_claude_oracle`)
 ```python
-['claude', '--bare',                       # strip Claude Code system prompt
- '--input-format',  'stream-json',
- '--output-format', 'stream-json',
- '--verbose',                              # needed to receive content_block_delta events
- '--permission-mode', 'bypassPermissions',
- '--model', 'claude-sonnet-4-6']
-# cwd = Path.home() — no file tools needed
+['claude', '-p', '--bare', '--model', 'claude-sonnet-4-6']   # sessions open
+['claude', '-p', '--bare', '--model', 'claude-haiku-4-5-20251001']  # no sessions
 ```
 
+**`-p` plain-text mode is required.** Stream-json flags (`--input-format/output-format stream-json`) are session-mode invocation — they require a running Claude Code parent process for auth. The Python daemon is external to Claude Code and cannot provide that context. Plain-text `-p` uses a lighter auth path that works from any process.
+
 **`--bare` is required.** Without it, the default Claude Code system prompt bleeds into oracle responses, overriding the Vexil persona.
+
+**NOT a persistent process.** One subprocess per query. Latency: ~2-5s (API only after subprocess spawn). Persistent process was attempted and abandoned — see auth constraint above.
 
 ### Message flow
 ```
