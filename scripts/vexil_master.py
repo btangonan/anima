@@ -779,15 +779,17 @@ def main() -> None:
             avoid = ', '.join(f'"{a}"' for a in recent_actions)
             prompt = prompt + f'\n\nDo not use these physical actions (already used recently): {avoid}.'
 
-        # ── Prepend file context ──────────────────────────────────────────────
-        # turn_complete fires every 20s — cap at 20 lines to avoid token bloat + latency.
-        # Structural triggers (retry_loop, read_heavy) keep full 100-line excerpts.
+        # ── Prepend file context (structural triggers only) ───────────────────
+        # turn_complete already has turn_text + user_msg — file excerpts cause the
+        # model to echo prose from large docs (STATE.md etc.) instead of observing.
+        # Only inject for structural triggers (retry_loop, read_heavy) where file
+        # content directly informs the diagnosis.
         try:
-            ctx_max = 20 if trigger == 'turn_complete' else 100
-            file_ctx = _collect_file_excerpts(recent_activity, now, ACTIVITY_RECENCY_WINDOW,
-                                              max_lines_per_file=ctx_max)
-            if file_ctx:
-                prompt = prompt + '\n\nRelevant file context:\n' + file_ctx
+            if trigger != 'turn_complete':
+                file_ctx = _collect_file_excerpts(recent_activity, now, ACTIVITY_RECENCY_WINDOW,
+                                                  max_lines_per_file=100)
+                if file_ctx:
+                    prompt = prompt + '\n\nRelevant file context:\n' + file_ctx
         except Exception as e:
             print(f'[vexil-master] file context error (skipping): {e}', flush=True)
 
