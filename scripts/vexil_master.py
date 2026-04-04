@@ -138,7 +138,7 @@ def _spawn_oracle_process() -> Tuple[subprocess.Popen, queue.Queue]:
     return proc, text_queue
 
 
-_AUTH_ERROR_STRINGS = ('not logged in', 'please run /login', 'authentication', 'unauthorized')
+_AUTH_ERROR_STRINGS = ('not logged in', 'please run /login')
 
 def _oracle_reader_thread_fn(proc: subprocess.Popen, text_queue: queue.Queue) -> None:
     """Read stream-json events from oracle stdout. Emits one text string per completed turn."""
