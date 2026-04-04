@@ -143,8 +143,6 @@ def _spawn_oracle_process() -> Tuple[subprocess.Popen, queue.Queue]:
     return proc, text_queue
 
 
-_AUTH_ERROR_STRINGS = ('not logged in', 'please run /login')
-
 def _oracle_reader_thread_fn(proc: subprocess.Popen, text_queue: queue.Queue) -> None:
     """Read stream-json events from oracle stdout. Emits one text string per completed turn."""
     current_text: list = []
@@ -167,15 +165,16 @@ def _oracle_reader_thread_fn(proc: subprocess.Popen, text_queue: queue.Queue) ->
                 if block.get('type') == 'text':
                     current_text.append(block.get('text', ''))
         elif etype == 'result':
-            # result event marks turn end — emit accumulated text
-            text = ''.join(current_text).strip()
-            current_text = []
-            # Swallow auth errors — process will die, health check respawns after /login
-            if text and any(s in text.lower() for s in _AUTH_ERROR_STRINGS):
-                print(f'[vexil-master] oracle auth error — run `claude /login` to fix', flush=True)
+            # Use is_error flag — not text matching — to detect auth failure.
+            # Text matching caused false positives on legitimate responses
+            # mentioning "not logged in" in a session context.
+            if event.get('is_error'):
+                print('[vexil-master] oracle result is_error=true — auth failure', flush=True)
                 text_queue.put('__auth_error__')
             else:
+                text = ''.join(current_text).strip()
                 text_queue.put(text if text else None)
+            current_text = []
     # Process exited
     text_queue.put(None)
 
