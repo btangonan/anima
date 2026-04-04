@@ -623,7 +623,7 @@ export async function initCompanion() {
     const rarityStr = buddy.rarity ? `${buddy.rarity} ` : '';
     bio.querySelector('.vexil-bio-name').textContent =
       `${buddy.name} · ${rarityStr}${displaySpecies}`.trim();
-    bio.classList.remove('hidden'); // bio always visible at panel bottom — not tab-toggled
+    // bio starts visible (no hidden class) — placeholder text already shown
   }
 
   // Sync buddy species with Claude Code companion — buddy.json is sole owner of this write

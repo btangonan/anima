@@ -56,11 +56,16 @@ const STATE_CLASS = {
   vexil:          'vexil-entry--buddy',
 };
 
+function fmtTs(ts) {
+  const m = String(ts).match(/(\d{1,2}:\d{2})/);
+  return m ? `[${m[1]}]` : `[${ts}]`;
+}
+
 function renderVexilLog(entries) {
   if (!$.vexilLog) return;
   $.vexilLog.innerHTML = entries.map(e => {
     const cls = STATE_CLASS[e.state] ?? '';
-    return `<div class="vexil-entry ${cls}"><span class="vexil-ts">${escapeHtml(e.ts)}</span>${escapeHtml(e.msg)}</div>`;
+    return `<div class="vexil-entry ${cls}"><span class="vexil-ts">${escapeHtml(fmtTs(e.ts))}</span>${escapeHtml(e.msg)}</div>`;
   }).join('');
   // Oldest first in array — scroll to bottom so latest is visible (matches session log flow)
   $.vexilLog.scrollTop = $.vexilLog.scrollHeight;

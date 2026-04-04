@@ -347,33 +347,56 @@ body.no-session-active #empty-state { display: block; }
 #message-log::-webkit-scrollbar { width: 3px; }
 #message-log::-webkit-scrollbar-track { background: transparent; }
 #message-log::-webkit-scrollbar-thumb { background: var(--border-hi); }
-/* ── ASCII buddy sprite (inside vexil-bio, replaces personality text) ── */
-#vexil-ascii {
-  margin-top: 6px;
+/* ── Vexil panel — outer container with hue border ── */
+#vexil-panel {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  border: 1px solid color-mix(in srgb, var(--companion-hue, #CC7D5E) 45%, transparent);
+  overflow: hidden;
+}
+
+/* ── ASCII buddy sprite (inside vexil-bio header row) ── */
+#vexil-ascii {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .vexil-ascii-art {
   font-family: var(--font-mono);
-  font-size: 14px;
-  line-height: 1.45;
-  color: var(--companion-hue, #39FF14);
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--companion-hue, #CC7D5E);
   margin: 0;
   padding: 0;
   white-space: pre;
   user-select: none;
-  text-align: center;
-  /* Glow effect matches the buddy's hue */
-  text-shadow: 0 0 8px color-mix(in srgb, var(--companion-hue, #39FF14) 60%, transparent);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--companion-hue, #CC7D5E) 50%, transparent);
   opacity: 0.92;
   transition: opacity 0.1s;
 }
 
-/* Buddy bio — persistent footer, always at panel bottom */
-.vexil-bio { padding: 6px 6px 12px; border-top: 1px solid var(--border); margin-top: 4px; }
-.vexil-bio-name { font-family: var(--font-mono); font-size: 9px; color: var(--text); opacity: 0.9; text-transform: uppercase; letter-spacing: 0.04em; }
-.vexil-bio-personality { font-family: var(--font-mono); font-size: 9px; color: var(--text-mid); opacity: 0.7; margin-top: 2px; font-style: italic; line-height: 1.35; }
+/* Buddy bio — header row: art left, name right */
+.vexil-bio {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--companion-hue, #CC7D5E) 35%, transparent);
+  flex-shrink: 0;
+}
+.vexil-bio-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--companion-hue, #CC7D5E);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: right;
+}
+.vexil-bio-personality { display: none; }
 
 /* Reserve bottom clearance when companion bubble is visible so it doesn't overlap log text */
 #message-log.companion-active { padding-bottom: 180px; }
@@ -855,8 +878,8 @@ canvas.sprite-canvas {
 .voice-tab:hover { opacity: 0.8; }
 .voice-tab.active {
   opacity: 1;
-  color: var(--text);
-  border-bottom: 1px solid var(--text);
+  color: var(--companion-hue, #CC7D5E);
+  border-bottom: 1px solid var(--companion-hue, #CC7D5E);
 }
 #btn-clear-voice-log {
   font-family: var(--font-mono);
