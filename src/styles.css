@@ -949,8 +949,9 @@ canvas.sprite-canvas {
 /* ── Oracle pre-session chat ─── */
 #oracle-pre-chat {
   display: flex;
+  align-items: center;
   gap: 4px;
-  padding: 5px 8px;
+  padding: var(--sp-3);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -961,9 +962,10 @@ canvas.sprite-canvas {
   border: 1px solid var(--border);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  padding: 3px 6px;
+  font-size: var(--fs-base);
+  padding: var(--sp-2) 6px;
   outline: none;
+  line-height: var(--lh-base);
 }
 #oracle-input:focus { border-color: var(--companion-hue, #CC7D5E); }
 #oracle-send {
@@ -971,8 +973,8 @@ canvas.sprite-canvas {
   border: 1px solid var(--border);
   color: var(--text-mute);
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  padding: 3px 6px;
+  font-size: var(--fs-base);
+  padding: var(--sp-2) 6px;
   cursor: pointer;
   flex-shrink: 0;
 }
