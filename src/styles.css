@@ -908,7 +908,7 @@ canvas.sprite-canvas {
 }
 .vexil-entry--blocked { color: #ff6b6b; }
 .vexil-entry--warn    { color: #ffa94d; }
-.vexil-entry--buddy   { color: var(--companion-hue); }
+.vexil-entry--buddy   { color: var(--companion-hue, #FFDD44); }
 
 /* ── Settings panel hidden state ─── */
 #settings-panel.hidden { display: none; }

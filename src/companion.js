@@ -616,7 +616,6 @@ export async function initCompanion() {
     const rarityStr = buddy.rarity ? `${buddy.rarity} ` : '';
     bio.querySelector('.vexil-bio-name').textContent =
       `${buddy.name} · ${rarityStr}${displaySpecies}`.trim();
-    bio.querySelector('.vexil-bio-personality').textContent = buddy.personality ?? '';
     bio.classList.remove('hidden'); // bio always visible at panel bottom — not tab-toggled
   }
 
