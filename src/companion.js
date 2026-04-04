@@ -189,9 +189,11 @@ function updateAsciiFrame(frameIdx) {
 
 function scheduleNextFidget() {
   clearTimeout(_asciiAnimTimer);
+  if (!_asciiPre) return;  // panel gone — stop recursing
   // Idle for 3–8 seconds then briefly fidget
   const delay = 3000 + Math.random() * 5000;
   _asciiAnimTimer = setTimeout(() => {
+    if (!_asciiPre) return;  // panel removed between schedule and fire
     if (_asciiState !== 'idle') { scheduleNextFidget(); return; }
     _asciiState = 'fidget';
     updateAsciiFrame(1);

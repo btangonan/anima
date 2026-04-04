@@ -374,15 +374,19 @@ async function sendMessage(id, text) {
   s._lastUserMsg = raw;  // captured for vexil routing in events.js
   const trigger = getBuddyTrigger();           // e.g. "vexil "
   const triggerName = trigger.trim();           // e.g. "vexil"
+  // Escape any regex special chars in buddy name (e.g. "Mr. Robot", "C++")
+  const triggerEscaped = triggerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const lowerRaw = raw.toLowerCase();
   // Match "vexil <message>" (start) OR "hey vexil" / "vexil?" (word anywhere)
   const startsWithTrigger = lowerRaw.startsWith(trigger);
-  const containsTrigger   = !startsWithTrigger && new RegExp(`\\b${triggerName}\\b`).test(lowerRaw);
+  const containsTrigger   = !startsWithTrigger && new RegExp(`\\b${triggerEscaped}\\b`).test(lowerRaw);
   const afterTrigger = startsWithTrigger ? raw.slice(trigger.length).trimStart()
                       : containsTrigger  ? raw
                       : null;
   // Vexil turn only for conversational messages — not slash command invocations (skill output stays in session log)
   s._vexilTurn = afterTrigger !== null && !afterTrigger.startsWith('/');
+  // Precompute confirmedVexil so events.js doesn't re-parse the same text
+  s._confirmedVexil = s._vexilTurn;
   _deps.pushMessage(id, { type: 'user', text: raw }); // always show user message in session log
   s._workingPhase = 'thinking';
   _deps.setStatus(id, 'working');

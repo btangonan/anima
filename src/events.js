@@ -320,10 +320,7 @@ export function handleEvent(id, event) {
           // Route vexil-addressed replies to VEXIL tab only.
           // Guard: verify _lastUserMsg actually started with 'vexil ' — prevents
           // state leaks where _vexilTurn is true but the triggering message wasn't vexil.
-          const _trigger = getBuddyTrigger();
-          const _lmsg = (s._lastUserMsg || '').toLowerCase();
-          const confirmedVexil = s._vexilTurn
-            && (_lmsg.startsWith(_trigger) || new RegExp(`\\b${_trigger.trim()}\\b`).test(_lmsg));
+          const confirmedVexil = s._confirmedVexil && s._vexilTurn;
           pxLog('VEXIL', `id:${id.slice(0,8)} turn:${s._vexilTurn} confirmed:${confirmedVexil} lastMsg:"${(s._lastUserMsg||'').slice(0,40)}" textLen:${s._turnText?.length ?? 0}`);
           if (confirmedVexil && s._turnText) {
             addToVexilLog('vexil', s._turnText.replace(/\n/g, ' ').slice(0, 240));
@@ -348,6 +345,7 @@ export function handleEvent(id, event) {
         s._turnText = '';
         s._lastUserMsg = '';
         s._vexilTurn = false;
+        s._confirmedVexil = false;
         s._turnToolCount = 0;
         setStatus(id, 'idle');
         if (getActiveSessionId() !== id) {
