@@ -5,7 +5,7 @@ import { sessions, getActiveSessionId } from './session.js';
 import { sendMessage } from './session-lifecycle.js';
 import { pushMessage } from './messages.js';
 import { setActiveSession } from './cards.js';
-import { getLintLogForSession, clearLintLog, setVexilLogListener } from './companion.js';
+import { getLintLogForSession, clearLintLog, setVexilLogListener, setOracleResponseListener } from './companion.js';
 import { clearSentAttachments } from './attachments.js';
 
 const { Command } = window.__TAURI__.shell;
@@ -197,6 +197,92 @@ function resolveSession(ref) {
   return getActiveSessionId();
 }
 
+// ── Oracle pre-session chat ────────────────────────────────
+const ORACLE_QUERY_PATH = '/tmp/oracle_query.json';
+
+function initOraclePreChat() {
+  const wrap  = $.oraclePreChat;
+  const input = $.oracleInput;
+  if (!wrap || !input) return;
+
+  let _reqId = 0;
+  let _pendingReqId = null;
+  let _thinkingEl   = null;
+  let _history      = [];  // [{role, content}] rolling last 6
+
+  function setVisible() {
+    const show = sessions.size === 0 && _vexilTabActive;
+    wrap.classList.toggle('hidden', !show);
+    // On first reveal with empty log, show the idle prompt
+    if (show && $.vexilLog && $.vexilLog.children.length === 0) {
+      const el = document.createElement('div');
+      el.className = 'vexil-entry vexil-entry--buddy';
+      el.textContent = 'Watching. Nothing to observe yet — open a project to give me something to work with.';
+      $.vexilLog.appendChild(el);
+    }
+    if (show) setTimeout(() => input.focus(), 50);
+  }
+
+  function appendEntry(text, cls) {
+    if (!$.vexilLog) return null;
+    const el = document.createElement('div');
+    el.className = cls;
+    el.textContent = text;
+    $.vexilLog.appendChild(el);
+    $.vexilLog.scrollTop = $.vexilLog.scrollHeight;
+    return el;
+  }
+
+  async function submit() {
+    const text = input.value.trim();
+    if (!text || _pendingReqId !== null) return;
+    input.value = '';
+
+    appendEntry(text, 'oracle-user-msg');
+    _history.push({ role: 'user', content: text });
+
+    _thinkingEl = appendEntry('· · ·', 'oracle-thinking');
+
+    const reqId = ++_reqId;
+    _pendingReqId = reqId;
+
+    try {
+      await invoke('write_file_as_text', {
+        path: ORACLE_QUERY_PATH,
+        content: JSON.stringify({ message: text, history: _history.slice(-6), req_id: reqId }),
+      });
+    } catch (_) {
+      if (_thinkingEl) { _thinkingEl.remove(); _thinkingEl = null; }
+      _pendingReqId = null;
+      appendEntry('(oracle unreachable)', 'oracle-thinking');
+    }
+  }
+
+  setOracleResponseListener((entry) => {
+    if (entry.req_id !== _pendingReqId) return;
+    if (_thinkingEl) { _thinkingEl.remove(); _thinkingEl = null; }
+    _pendingReqId = null;
+
+    const ts = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+    const el = document.createElement('div');
+    el.className = 'vexil-entry vexil-entry--buddy';
+    el.innerHTML = `<span class="vexil-ts">[${ts}]</span>${escapeHtml(entry.msg)}`;
+    $.vexilLog?.appendChild(el);
+    $.vexilLog.scrollTop = $.vexilLog.scrollHeight;
+
+    _history.push({ role: 'oracle', content: entry.msg });
+    if (_history.length > 6) _history = _history.slice(-6);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submit(); }
+  });
+  $.oracleSend?.addEventListener('click', submit);
+
+  document.addEventListener('pixel:session-changed', setVisible);
+  setVisible();
+}
+
 // ── Init (called once from bootstrap) ──────────────────────
 export function initVoice() {
   // Check if voice bridge is already connected (handles page reload)
@@ -313,4 +399,7 @@ export function initVoice() {
   // Vexil chat log tab
   initVexilTabs();
   setVexilLogListener(renderVexilLog);
+
+  // Oracle pre-session chat (visible when no sessions are open)
+  initOraclePreChat();
 }

@@ -86,6 +86,7 @@ const DENY_LABELS = {
 let buddy = null;
 let _companionInitialized = false;  // singleton guard — species sync runs exactly once
 let _vexilLogListener = null;       // registered by voice.js to re-render the Vexil tab
+let _oracleResponseListener = null; // registered by voice.js for pre-session ORACLE chat
 let _lastLintSeen = '';       // prevent re-showing same lint event
 let _lastOpsKey   = '';       // prevent re-showing same ops report
 let _approvalPending = false;
@@ -571,6 +572,7 @@ export function getLintLogForSession(id) { return LINT_LOG.get(id) ?? []; }
 export function clearLintLog(id) { LINT_LOG.set(id, []); }
 
 export function setVexilLogListener(cb) { _vexilLogListener = cb; }
+export function setOracleResponseListener(cb) { _oracleResponseListener = cb; }
 export function addToVexilLog(state, msg) {
   addToLintLog(state, msg);
   invoke('js_log', { msg: `[vexil-reply] state:${state} "${msg?.slice(0,80)}"` }).catch(() => {});
@@ -589,7 +591,10 @@ async function pollMasterOut() {
     for (const line of newLines) {
       try {
         const entry = JSON.parse(line);
-        if (entry.msg) {
+        if (entry.type === 'oracle_response') {
+          // Route to pre-session oracle chat — do NOT add to lint log
+          if (_oracleResponseListener) _oracleResponseListener(entry);
+        } else if (entry.msg) {
           addToLintLog('vexil', entry.msg);
           invoke('js_log', { msg: `[vexil-master] "${entry.msg?.slice(0,80)}"` }).catch(() => {});
           // bubble suppressed — log tab is the surface

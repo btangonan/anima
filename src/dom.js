@@ -56,6 +56,10 @@ export function initDOM() {
   $.historyList = document.getElementById('history-list');
   $.historyCurrent = document.getElementById('history-current');
   $.historySearch = document.getElementById('history-search');
+  // Oracle pre-session chat
+  $.oraclePreChat = document.getElementById('oracle-pre-chat');
+  $.oracleInput   = document.getElementById('oracle-input');
+  $.oracleSend    = document.getElementById('oracle-send');
   // History find bar
   $.historyFind = document.getElementById('history-find');
   $.historyFindInput = document.getElementById('history-find-input');

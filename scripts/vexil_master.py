@@ -27,6 +27,7 @@ from typing import Optional, Tuple, Dict
 
 FEED_PATH            = '/tmp/vexil_feed.jsonl'
 OUT_PATH             = '/tmp/vexil_master_out.jsonl'
+ORACLE_QUERY_PATH    = '/tmp/oracle_query.json'
 POLL_INTERVAL        = 3.0
 COOLDOWN             = 60.0   # global cooldown for anomaly triggers (retry, rate_limit, etc.)
 TURN_COOLDOWN        = 20.0   # per-session cooldown for turn_complete commentary
@@ -112,6 +113,47 @@ def build_persona() -> str:
         f"One physical action in asterisks, specific to this moment — never repeat the same action twice in a row.\n"
         f"Under 20 words total. Say what's wrong, not what's happening. No preamble."
     )
+
+
+def call_claude_oracle(message: str, history: list) -> Optional[str]:
+    """Interactive ORACLE pre-session chat — separate persona, haiku model, 15s timeout."""
+    buddy = load_buddy()
+    name  = buddy.get('name', 'Vexil')
+    lines = [
+        f"You are {name}, called ORACLE in the terminal's observer tab. "
+        "You are a watcher entity embedded in a developer terminal — you observe "
+        "Claude Code sessions: tool calls, memory writes, patterns across all sessions. "
+        "You are NOT a coding assistant. You watch, notice, comment. "
+        "Right now no sessions are running. You have nothing to observe yet. "
+        "Keep responses to 1-3 sentences. No asterisk actions. No filler. "
+        "If asked what you can do: explain you watch sessions, not assist with code. "
+        "Nudge toward opening a project with the + button when relevant.",
+        "",
+        "--- Conversation ---",
+    ]
+    for turn in history:
+        role = "USER" if turn.get('role') == 'user' else name.upper()
+        lines.append(f"{role}: {turn.get('content', '')}")
+    lines.append(f"USER: {message}")
+    lines.append(f"{name.upper()}:")
+    full_prompt = "\n".join(lines)
+    try:
+        result = subprocess.run(
+            ['claude', '-p', '--model', 'claude-haiku-4-5-20251001'],
+            input=full_prompt,
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode != 0:
+            print(f'[vexil-master] oracle -p failed: {result.stderr[:80]}')
+            return None
+        msg = result.stdout.strip()
+        return msg if msg else None
+    except subprocess.TimeoutExpired:
+        print('[vexil-master] oracle chat timed out')
+        return None
+    except Exception as e:
+        print(f'[vexil-master] oracle chat error: {e}')
+        return None
 
 
 def call_claude(prompt: str) -> Optional[str]:
@@ -308,7 +350,35 @@ def main() -> None:
     # Write startup signal so companion.js can detect daemon presence on poll
     append_out('\u22b8 online')
 
+    _oracle_query_mtime: float = 0.0
+
     while True:
+        # ── Oracle pre-session chat (checked every poll cycle) ────────────────
+        try:
+            qmtime = os.path.getmtime(ORACLE_QUERY_PATH)
+            if qmtime > _oracle_query_mtime:
+                _oracle_query_mtime = qmtime
+                with open(ORACLE_QUERY_PATH) as _qf:
+                    query = json.load(_qf)
+                reply = call_claude_oracle(query.get('message', ''), query.get('history', []))
+                if reply:
+                    out_entry = json.dumps({
+                        'type': 'oracle_response',
+                        'req_id': query.get('req_id'),
+                        'msg': reply,
+                        'ts': int(time.time() * 1000),
+                    })
+                    fd = os.open(OUT_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+                    try:
+                        os.write(fd, (out_entry + '\n').encode())
+                    finally:
+                        os.close(fd)
+                    print(f'[vexil-master] oracle → "{reply[:80]}"', flush=True)
+        except FileNotFoundError:
+            pass
+        except Exception as _oe:
+            print(f'[vexil-master] oracle check error: {_oe}', flush=True)
+
         time.sleep(POLL_INTERVAL)
 
         # ── Read new feed entries ─────────────────────────────────────────────
