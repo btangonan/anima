@@ -2,52 +2,62 @@
 ## Updated: 2026-04-04
 
 ### Active Branch
-`feat/ascii-buddies-gitgraph` — pushed, all changes committed
+`feat/familiar-card-phase2` — pushed, latest commit `e67afa3`
 
-### Shipped This Session (2026-04-03/04)
+### Uncommitted Changes
+None — all session work committed and pushed.
 
-#### ASCII Familiar System
-- `session.js`: SpriteRenderer/ANIMALS/getNextIdentity removed; `rollFamiliarBones()` (FNV-1a + Mulberry32), `assignFamiliarHue()`, `releaseFamiliarHue()`, `FAMILIAR_SPECIES` (18) added
-- `session-lifecycle.js`: createSession rolls familiar on spawn, killSession releases hue
-- `cards.js`: session cards render `<pre class="familiar-pre">` via `renderFrame()`; `updateFamiliarDisplay()` exported
-- `history.js`: SpriteRenderer replaced with ASCII pre in live pin
-- `app.js`: 400ms tick cycles `s._familiarFrame` + calls `updateFamiliarDisplay()`
-- `companion.js`: stale project-chars.json re-assignment block removed; JS override of tab text to 'BUDDY' removed
-- `styles.css`: `.sprite-wrap` 48→60px; `.sprite-wrap pre.familiar-pre` added; session card familiars color → `var(--accent)` (white, matches project name)
+### Shipped This Session (2026-04-04)
 
-#### Vexil Buddy Panel Unification → ORACLE
-- `index.html`: wrapped panel in `#vexil-panel`; bio above log as flex row; BUDDY tab → ORACLE
-- `styles.css`: outer border in companion-hue (45%); active tab hue-colored; bio row layout; timestamps [HH:MM]; `#vexil-panel` flex basis 0→40% (fixes shrunken log area)
-- `voice.js`: `fmtTs()` reformats timestamps to `[HH:MM]`
-- `companion.js`: removed `bio.classList.remove('hidden')`; removed JS override setting tab text to 'BUDDY' (was overwriting ORACLE on every init)
+#### Familiar Name Generator
+- Syllable combiner in `src/session.js`: 61 starts × 35 ends = 2135 combos
+- 5 thematic pools: Asian Folklore, Polynesian, Tolkien/Elven, Valyrian, Cyber-Pet
+- Blocklist: `Aegon`, `Radon`, `Torys`, `Finbit` (4 entries — upstream pool fixes handle the rest)
+- `rollFamiliarBones(path, rerollCount=0)` — appends `-rN` suffix to seed for re-rolls
+- Name shown in profile card header as title; species shown as TYPE field
 
-#### Other Fixes
-- `launch.command`: duplicate export guard; fingerprint hashes all changed files; WebKit NetworkCache cleared on launch (correct path: `~/Library/Caches/pixel-terminal/WebKit/NetworkCache`)
-- `events.js`: rate limit surfaces as system-msg in chat log
-- `vexil_master.py`: `session_born` dict + 120s suppression for `read_heavy`
-- `styles.css`: companion hue `#FF4422 → #CC7D5E` (warm terracotta)
-- `buddy.json`: hue updated to `#CC7D5E`
-- `CLAUDE.md`: retrieval order rule hardened — memory before files, mandatory
+#### @nim@ Currency System (`src/nim.js`)
+- Global balance in `localStorage['pixel-nim-balance']`
+- `NIM_PER_TOKENS = 1000` — 1 nim per 1000 tokens spent
+- `REROLL_NIM_COST = 0` — gate open for testing; change this one constant to charge
+- `accrueNimForSession(s)` hooked into `events.js` 'result' case after `s.tokens` commits
+- `_nimTokensAccrued: 0` on session shape prevents double-counting on session restart
 
-#### START HERE Banner
-- Whale sprite replaced with random ASCII familiar walking left↔right
-- `styles.css`: walker track 36→56px height, 9→15px font
+#### Re-roll Mechanic
+- `getFamiliarRerollCount(cwd)` / `incrementFamiliarReroll(cwd)` — localStorage per project path
+- Re-roll button in profile card footer — disabled+locked when balance < cost
+- `showRerollConfirm(sessionId)` — confirm dialog with cost / balance / "lost forever" warning
+- On confirm: spends nim, increments reroll count, re-rolls familiar, refreshes sidebar, reopens profile card
+- `_buildSpriteWrap(wrap, id)` helper — single source of truth for sidebar sprite DOM
 
-### Pending
-- **Vexil size in bio row**: Vexil ASCII art at 10px — needs to be more visually dominant vs session card familiars (6px). User said: "god creature master familiar." Layout approach not locked.
-- **warn_near_limit root cause**: Restored lint warning. Real fix is writing memory docs <200 chars (schema discipline), not code.
-- **Anthropic third-party policy** (April 4 12PM PT): pixel-terminal uses Claude Code CLI directly, not affected.
+#### Cleanup
+- Familiar name label removed from sidebar session cards (profile card only)
+- `.familiar-name` CSS rule removed
+
+### Pending / Next
+- **Live test** the re-roll flow in the actual app — unverified
+- **Oracle bug fixes**: src/voice.js + launch.command — still uncommitted from prior session
+- **Production PATH fix**: `get_shell_path()` Rust command for .app Dock launch
+- **Nim accrual display**: show nim balance somewhere in UI (sidebar footer? settings?)
+- **PR**: merge `feat/familiar-card-phase2` → main when re-roll is verified
 
 ### Key IDs
 - Collection: `pixel_terminal` (gemini-memory)
-- Branch: `feat/ascii-buddies-gitgraph`
-- buddy.json: `~/.config/pixel-terminal/buddy.json` (hue: #CC7D5E, species: duck, reportingMode: dev)
+- Branch: `feat/familiar-card-phase2`
+- buddy.json: `~/.config/pixel-terminal/buddy.json`
 - Type scale: `--fs-lg(13) --fs-base(12) --fs-sm(11) --fs-xs(10)`
-- Familiar hue palette: `['#FFDD44', '#FF8C42', '#40E0D0', '#FF6EC7']`
+- Log: `/tmp/pixel-terminal.log`
+- `FAMILIAR_SALT = 'pixel-familiar-2026'`
+
+### Key Files
+- `src/nim.js` — @nim@ currency primitives (new this session)
+- `src/session.js` — rollFamiliarBones, name pools, reroll helpers
+- `src/cards.js` — profile card, confirm dialog, _buildSpriteWrap
+- `src/events.js` — nim accrual hook in 'result' case
 
 ### Decisions
-- Vexil = observer only, no direct chat input
-- Session familiars: white (#fff, matches project name); Vexil: orange (#CC7D5E)
-- Tab label = ORACLE (not BUDDY). Set in HTML only — JS must not override.
-- `read_heavy` suppressed for first 120s — orientation reads are expected
-- WebKit NetworkCache (not WebKit data dir) is what needs clearing for HTML changes to land
+- Nim is global (not per-session) — earned across all sessions, spent on any familiar
+- Re-roll determinism: same path + same count = same familiar forever
+- Blocklist rotates ends (no extra rng() calls) to avoid shifting stat seeds
+- REROLL_NIM_COST lives in nim.js as a single constant — one file change to gate
+- Name labels not shown in sidebar — profile card only
