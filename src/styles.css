@@ -977,7 +977,7 @@ canvas.sprite-canvas {
 }
 #oracle-send {
   background: transparent;
-  border: 1px solid var(--border);
+  border: none;
   color: var(--text-mute);
   font-family: var(--font-mono);
   font-size: var(--fs-base);
