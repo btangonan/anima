@@ -92,6 +92,9 @@ EOF
 # Wipe event feeds from last run (fresh slate per launch)
 rm -f /tmp/vexil_feed.jsonl /tmp/vexil_master_out.jsonl
 
+# Clear WebKit cache so HTML/CSS changes land without a manual cache wipe
+rm -rf ~/Library/WebKit/pixel-terminal
+
 # Source shell profiles so PATH includes the claude CLI for the Vexil Master daemon.
 # .command files launched from Finder don't source .zshrc — only login shells.
 # shellcheck disable=SC1090
