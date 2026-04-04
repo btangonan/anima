@@ -384,6 +384,7 @@ async function pollHookGate() {
   try {
     gate = JSON.parse(raw);
   } catch {
+    setTimeout(pollHookGate, 50);  // partial write in flight — retry once after 50ms
     return;
   }
   if (!gate?.id || !gate?.msg) return;
@@ -416,6 +417,7 @@ async function pollLintFile() {
   try {
     lint = JSON.parse(raw);
   } catch {
+    setTimeout(pollLintFile, 50);  // partial write in flight — retry once after 50ms
     return;
   }
 
@@ -540,20 +542,13 @@ async function _writeProjectChar(cwd, animalName) {
   try {
     const home = await getHomeDir();
     const charPath = `${home}/${PROJECT_CHARS_FILENAME}`;
-    const cwdB64  = btoa(cwd);
-    const pathB64 = btoa(charPath);
-    const script = `
-import json, base64, os
-p   = base64.b64decode('${pathB64}').decode()
-cwd = base64.b64decode('${cwdB64}').decode()
-data = json.load(open(p)) if os.path.exists(p) else {}
-data[cwd] = '${animalName}'
-with open(p, 'w') as f:
-    json.dump(data, f, indent=2)
-`.trim();
-    const { Command } = window.__TAURI__.shell;
-    const result = await new Command('python3', ['-c', script]).execute();
-    if (result.code !== 0) console.warn('saveProjectChar failed:', result.stderr);
+    let chars = {};
+    try {
+      const raw = await invoke('read_file_as_text', { path: charPath });
+      chars = JSON.parse(raw);
+    } catch { /* file doesn't exist yet — start empty */ }
+    chars[cwd] = animalName;
+    await invoke('write_file_as_text', { path: charPath, content: JSON.stringify(chars, null, 2) });
   } catch (e) { console.warn('saveProjectChar failed:', e); }
 }
 
