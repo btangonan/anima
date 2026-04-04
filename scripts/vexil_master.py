@@ -119,8 +119,13 @@ def build_persona() -> str:
     )
 
 
+_CLAUDE_ENV_BLOCKLIST = {'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'ANTHROPIC_ISJEST'}
+
 def _spawn_oracle_process() -> Tuple[subprocess.Popen, queue.Queue]:
     """Spawn a persistent claude oracle process. Returns (proc, text_queue)."""
+    # Strip Claude Code env vars — inherited CLAUDECODE=1 causes auth failure
+    # (claude CLI refuses to authenticate when invoked from within Claude Code)
+    env = {k: v for k, v in os.environ.items() if k not in _CLAUDE_ENV_BLOCKLIST}
     proc = subprocess.Popen(
         ['claude', '-p', '--bare', '--input-format', 'stream-json',
          '--output-format', 'stream-json', '--verbose',
@@ -130,6 +135,7 @@ def _spawn_oracle_process() -> Tuple[subprocess.Popen, queue.Queue]:
         stderr=subprocess.DEVNULL,
         cwd=str(Path.home()),
         bufsize=0,
+        env=env,
     )
     text_queue: queue.Queue = queue.Queue()
     threading.Thread(target=_oracle_reader_thread_fn, args=(proc, text_queue), daemon=True).start()
