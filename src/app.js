@@ -5,8 +5,9 @@
 
 import { $, initDOM, autoResize, showConfirm } from './dom.js';
 import {
-  sessions, getActiveSessionId, IDENTITY_SEQ_KEY, SPRITE_DATA
+  sessions, getActiveSessionId, IDENTITY_SEQ_KEY, SPRITE_DATA, FAMILIAR_SPECIES
 } from './session.js';
+import { renderFrame } from './ascii-sprites.js';
 import {
   spawnClaude, sendMessage, pickFolder,
   expandSlashCommand, warnIfUnknownCommand, interruptSession, setLifecycleDeps
@@ -236,25 +237,23 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Killer whale sprite — direction-aware, animated + swims left↔right
-  const _whaleEl = $.sessionPromptWhale;
-  let _whaleFrame = 0, _whaleX = 0, _whaleDir = 1, _whaleTick = 0;
-  if (_whaleEl) {
-    _whaleEl.style.backgroundImage = `url(${SPRITE_DATA['k-whale-half5']})`;
-    _whaleEl.style.transform = 'scaleX(-1)'; // sprite faces left by default; flip to face right
+  // ASCII familiar — walks left↔right in the "START HERE" banner
+  const _walkerEl = $.sessionPromptWalker;
+  const _walkerSpecies = FAMILIAR_SPECIES[Math.floor(Math.random() * FAMILIAR_SPECIES.length)];
+  let _walkerFrame = 0, _walkerX = 0, _walkerDir = 1, _walkerTick = 0;
+  if (_walkerEl) {
+    _walkerEl.textContent = renderFrame(_walkerSpecies, 0, 'o', 'none').join('\n');
     setInterval(() => {
-      // 2-frame animation: alternate frame 0 / frame 1 (18px wide each, displayed at 3x = 54px)
-      _whaleFrame = (_whaleFrame + 1) % 2;
-      _whaleEl.style.backgroundPosition = `${-_whaleFrame * 54}px 0px`;
-      // Movement — bounce left ↔ right within track
-      const track = _whaleEl.parentElement;
-      const maxX = Math.max(0, track.offsetWidth - 54);
-      _whaleX += _whaleDir * 10;
-      if (_whaleX >= maxX) { _whaleX = maxX; _whaleDir = -1; _whaleEl.style.transform = 'scaleX(1)';  }
-      if (_whaleX <= 0)    { _whaleX = 0;    _whaleDir =  1; _whaleEl.style.transform = 'scaleX(-1)'; }
-      _whaleEl.style.left = _whaleX + 'px';
-      _whaleTick++;
-      if (_whaleTick % 2 === 0) $.btnNewSession?.classList.toggle('plus-inverted');
+      _walkerFrame = (_walkerFrame + 1) % 3;
+      _walkerEl.textContent = renderFrame(_walkerSpecies, _walkerFrame, 'o', 'none').join('\n');
+      const track = _walkerEl.parentElement;
+      const maxX = Math.max(0, track.offsetWidth - _walkerEl.offsetWidth);
+      _walkerX += _walkerDir * 8;
+      if (_walkerX >= maxX) { _walkerX = maxX; _walkerDir = -1; _walkerEl.style.transform = 'scaleX(-1)'; }
+      if (_walkerX <= 0)    { _walkerX = 0;    _walkerDir =  1; _walkerEl.style.transform = 'scaleX(1)';  }
+      _walkerEl.style.left = _walkerX + 'px';
+      _walkerTick++;
+      if (_walkerTick % 2 === 0) $.btnNewSession?.classList.toggle('plus-inverted');
     }, 320);
   }
 

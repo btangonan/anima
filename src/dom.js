@@ -42,7 +42,7 @@ export function initDOM() {
   $.voiceSourceMic = document.getElementById('voice-source-mic');
   $.sessionPrompt = document.getElementById('session-prompt');
   $.sessionPromptGotIt = document.getElementById('session-prompt-got-it');
-  $.sessionPromptWhale = document.getElementById('session-prompt-whale');
+  $.sessionPromptWalker = document.getElementById('session-prompt-walker');
   $.sidebarHeader = document.getElementById('sidebar-header');
   $.inputBar = document.getElementById('input-bar');
   // Session search
