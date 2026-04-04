@@ -868,18 +868,27 @@ canvas.sprite-canvas {
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   font-weight: 600;
-  color: var(--accent);
+  color: var(--text-mid);
   background: transparent;
   border: none;
   cursor: pointer;
   padding: 2px 5px;
   letter-spacing: 0.04em;
+  opacity: 0.65;
+  transition: color 0.15s, opacity 0.15s;
 }
+.voice-tab:hover { opacity: 1; color: var(--accent); }
 .voice-tab.active {
-  border-bottom: 1px solid currentColor;
+  color: var(--accent);
+  opacity: 1;
+  border-bottom: 1px solid var(--accent);
 }
 #vexil-tab-btn {
   color: var(--companion-hue, #CC7D5E);
+}
+#vexil-tab-btn.active {
+  color: var(--companion-hue, #CC7D5E);
+  border-bottom-color: var(--companion-hue, #CC7D5E);
 }
 #btn-clear-voice-log {
   font-family: var(--font-mono);
@@ -958,7 +967,7 @@ canvas.sprite-canvas {
 #oracle-input {
   flex: 1;
   background: transparent;
-  border: 1px solid var(--border);
+  border: none;
   color: var(--text);
   font-family: var(--font-mono);
   font-size: var(--fs-base);
@@ -966,7 +975,6 @@ canvas.sprite-canvas {
   outline: none;
   line-height: var(--lh-base);
 }
-#oracle-input:focus { border-color: var(--border); outline: none; }
 #oracle-send {
   background: transparent;
   border: 1px solid var(--border);
