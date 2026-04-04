@@ -698,6 +698,8 @@ export async function initCompanion() {
   }, POLL_INTERVAL);
   setInterval(pollOpsReport, 5000);   // ops report slower — less frequent events
   setInterval(pollMasterOut, 1500);   // master proactive commentary
+
+  document.dispatchEvent(new CustomEvent('pixel:companion-ready', { detail: { name: buddy?.name } }));
 }
 
 // Returns the lowercase trigger prefix for addressing the companion (e.g. "vexil ")

@@ -5,7 +5,7 @@ import { sessions, getActiveSessionId } from './session.js';
 import { sendMessage } from './session-lifecycle.js';
 import { pushMessage } from './messages.js';
 import { setActiveSession } from './cards.js';
-import { getLintLogForSession, clearLintLog, setVexilLogListener, setOracleResponseListener } from './companion.js';
+import { getLintLogForSession, clearLintLog, setVexilLogListener, setOracleResponseListener, companionBuddy } from './companion.js';
 import { clearSentAttachments } from './attachments.js';
 
 const { Command } = window.__TAURI__.shell;
@@ -287,6 +287,26 @@ function initOraclePreChat() {
   document.addEventListener('pixel:session-changed', setVisible);
   document.addEventListener('pixel:vexil-tab-changed', setVisible);
   setVisible();
+
+  // Post intro once — only after companion is ready AND a session is active
+  let _introPosted = false;
+  let _companionName = null;
+
+  function _maybePostIntro() {
+    if (_introPosted || !_companionName) return;
+    _introPosted = true;
+    appendEntry(`address me as "${_companionName}" if you want my opinion.`, 'vexil-entry vexil-entry--buddy oracle-intro');
+  }
+
+  document.addEventListener('pixel:companion-ready', (e) => {
+    _companionName = e.detail?.name || companionBuddy?.name;
+    // Only post if a session is already active when companion loads
+    if (getActiveSessionId()) _maybePostIntro();
+  }, { once: true });
+
+  document.addEventListener('pixel:session-changed', () => {
+    _maybePostIntro();
+  });
 }
 
 // ── Init (called once from bootstrap) ──────────────────────

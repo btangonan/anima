@@ -889,7 +889,7 @@ canvas.sprite-canvas {
   gap: 2px;
 }
 .voice-tab {
-  font-family: var(--font-mono);
+  font-family: var(--font);
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-mid);
@@ -897,8 +897,8 @@ canvas.sprite-canvas {
   border: 1px solid transparent;
   border-radius: 2px;
   cursor: pointer;
-  padding: 2px 5px;
-  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  letter-spacing: 0.05em;
   opacity: 0.65;
   transition: color 0.15s, border-color 0.15s, opacity 0.15s;
 }
@@ -909,10 +909,11 @@ canvas.sprite-canvas {
   opacity: 1;
 }
 #vexil-tab-btn {
-  color: var(--companion-hue, #CC7D5E);
+  color: var(--text-mid);
 }
 #vexil-tab-btn.active {
-  color: var(--companion-hue, #CC7D5E);
+  color: var(--accent);
+  border-color: var(--border-hi);
 }
 #btn-clear-voice-log {
   font-family: var(--font-mono);
@@ -1040,6 +1041,11 @@ canvas.sprite-canvas {
   font-size: var(--fs-xs);
   opacity: 0.5;
   padding: 1px 0;
+}
+.oracle-intro {
+  opacity: 0.45;
+  font-style: italic;
+  padding-bottom: 4px;
 }
 
 /* ── Settings panel hidden state ─── */
