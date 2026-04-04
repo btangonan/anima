@@ -369,9 +369,8 @@ def main() -> None:
     # Write startup signal so companion.js can detect daemon presence on poll
     append_out('\u22b8 online')
 
-    # ── Oracle persistent process (lazy — spawned on first query) ────────────
-    oracle_proc: Optional[subprocess.Popen] = None
-    oracle_queue: queue.Queue = queue.Queue()
+    # ── Oracle persistent process (eager — warm before first query) ──────────
+    oracle_proc, oracle_queue = _spawn_oracle_process()
 
     def _sigterm_handler(signum, frame):
         if oracle_proc and oracle_proc.poll() is None:
@@ -386,9 +385,9 @@ def main() -> None:
     def _oracle_worker(query: dict) -> None:
         nonlocal _oracle_busy, oracle_proc, oracle_queue
         try:
-            # Lazy init + health check — spawn on first use or respawn if dead
-            if oracle_proc is None or oracle_proc.poll() is not None:
-                print('[vexil-master] oracle process starting', flush=True)
+            # Health check — respawn if process died (e.g. after auth error + /login)
+            if oracle_proc.poll() is not None:
+                print('[vexil-master] oracle process dead — respawning', flush=True)
                 oracle_proc, oracle_queue = _spawn_oracle_process()
 
             # Build context blob (same structure as former call_claude_oracle)
