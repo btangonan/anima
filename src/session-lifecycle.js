@@ -7,7 +7,7 @@ import {
   getActiveSessionId, setActiveSessionId,
   syncOmiSessions, getFamiliarRerollCount,
 } from './session.js';
-import { getBuddyTrigger } from './companion.js';
+import { getBuddyTrigger, addToVexilLog } from './companion.js';
 import { getStagedAttachments, markAttachmentsSent, cleanupSession as cleanupAttachments } from './attachments.js';
 import { getSlashCommands, isBuiltinCommand } from './slash-menu.js';
 import { pxLog } from './logger.js';
@@ -15,6 +15,35 @@ import { pxLog } from './logger.js';
 const { Command } = window.__TAURI__.shell;
 const { open: openDialog } = window.__TAURI__.dialog;
 const { invoke } = window.__TAURI__.core;
+
+// ── MCP permission gate ──────────────────────────────────────
+// Resolve path to anima_gate.py and write MCP config on first spawn.
+let _mcpConfigPath = null;
+
+async function ensureMcpConfig() {
+  if (_mcpConfigPath) return _mcpConfigPath;
+  // In dev, anima_gate.py is at src-tauri/mcp/ relative to the app.
+  // Use Tauri's resource resolver when available; fall back to __dirname-style lookup.
+  const home = await window.__TAURI__.path.homeDir();
+  // The app source is always at this known path (checked at build time).
+  const gatePath = `${home}Projects/pixel-terminal/src-tauri/mcp/anima_gate.py`;
+  const config = {
+    mcpServers: {
+      anima: {
+        type: 'stdio',
+        command: 'python3',
+        args: [gatePath],
+      },
+    },
+  };
+  const tmpPath = '/tmp/anima_mcp_config.json';
+  await invoke('write_file_as_text', {
+    path: tmpPath,
+    content: JSON.stringify(config),
+  });
+  _mcpConfigPath = tmpPath;
+  return _mcpConfigPath;
+}
 
 // Forward declarations — set by app.js bootstrap to break circular deps
 let _deps = {
@@ -87,19 +116,22 @@ async function spawnClaude(id) {
   if (!s) return;
   pxLog('SPAWN', `id:${id.slice(0,8)} cwd:${s.cwd} model:${s._modelOverride||'default'} effort:${s._effortOverride||'default'} continue:${!!s._interrupted}`);
   try {
+    const mcpConfig = await ensureMcpConfig();
     const claudeArgs = [
       '-p',
       '--input-format',  'stream-json',
       '--output-format', 'stream-json',
       '--verbose',
-      '--permission-mode', 'bypassPermissions',
+      '--permission-mode', 'default',
+      '--permission-prompt-tool', 'mcp__anima__approve',
+      '--mcp-config', mcpConfig,
     ];
     if (s._interrupted) { claudeArgs.push('--continue'); s._interrupted = false; }
     if (s.readOnly) claudeArgs.push('--disallowed-tools', 'Edit,Write,MultiEdit,NotebookEdit,Bash');
     if (s._modelOverride) claudeArgs.push('--model', s._modelOverride);
     if (s._effortOverride) claudeArgs.push('--effort', s._effortOverride);
     if (s._fallbackModel) claudeArgs.push('--fallback-model', s._fallbackModel);
-    const cmd = Command.create('claude', claudeArgs, { cwd: s.cwd });
+    const cmd = Command.create('claude', claudeArgs, { cwd: s.cwd, env: { ANIMA_SESSION: id } });
 
     let _buf = '';
     cmd.stdout.on('data', (chunk) => {
@@ -373,9 +405,50 @@ async function sendMessage(id, text) {
                       : containsTrigger  ? raw
                       : null;
   // Vexil turn only for conversational messages — not slash command invocations (skill output stays in session log)
-  s._vexilTurn = afterTrigger !== null && !afterTrigger.startsWith('/');
-  // Precompute confirmedVexil so events.js doesn't re-parse the same text
-  s._confirmedVexil = s._vexilTurn;
+  const isVexilTurn = afterTrigger !== null && !afterTrigger.startsWith('/');
+
+  // ── Oracle bypass: vexil-addressed messages go through a dedicated Claude subprocess
+  // instead of the main session stdin. This prevents mid-turn swallowing when the main
+  // session is busy (agents running, tool calls in progress). Each vexil message gets
+  // its own immediate response via the oracle_query Tauri command.
+  if (isVexilTurn) {
+    _deps.pushMessage(id, { type: 'user', text: raw });
+    pxLog('VEXIL-ORACLE', `id:${id.slice(0,8)} bypassing main stdin → oracle_query`);
+    // Build conversation history from session log — gives oracle same depth as native buddy.
+    // Extract user/claude message pairs, cap at last 20 turns to stay within subprocess token budget.
+    const logData = sessionLogs.get(id);
+    const history = [];
+    if (logData?.messages) {
+      for (const m of logData.messages) {
+        if (m.type === 'user' && m.text)  history.push({ role: 'user', content: m.text.slice(0, 500) });
+        if (m.type === 'claude' && m.text) history.push({ role: 'oracle', content: m.text.slice(0, 1000) });
+      }
+    }
+    // Keep last 40 entries (~20 turns) — enough for full conversational context
+    const recentHistory = history.slice(-40);
+    // Fire and forget — don't block the input or set session to working.
+    // The oracle response goes directly to the VEXIL log tab.
+    (async () => {
+      try {
+        const resp = await invoke('oracle_query', {
+          message: raw,
+          history: recentHistory,
+          reqId: Date.now(),
+          sessions: [...sessions.values()].map(ss => ({ name: ss.name, cwd: ss.cwd })),
+        });
+        if (resp?.msg) {
+          addToVexilLog('vexil', resp.msg.replace(/\n/g, ' ').slice(0, 240));
+          pxLog('VEXIL-ORACLE', `id:${id.slice(0,8)} reply: "${resp.msg.slice(0, 80)}"`);
+        }
+      } catch (err) {
+        pxLog('VEXIL-ORACLE', `id:${id.slice(0,8)} oracle failed: ${err}`);
+      }
+    })();
+    return;
+  }
+
+  s._vexilTurn = false;
+  s._confirmedVexil = false;
   _deps.pushMessage(id, { type: 'user', text: raw }); // always show user message in session log
   s._workingPhase = 'thinking';
   _deps.setStatus(id, 'working');

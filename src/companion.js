@@ -12,7 +12,7 @@
  * species not yet drawn as pixel art).
  */
 
-import { SPRITE_DATA, getActiveSessionId } from './session.js';
+import { SPRITE_DATA, getActiveSessionId, sessions } from './session.js';
 import { SPRITES, EYE_CHARS, DEFAULT_EYE, HATS, renderFrame } from './ascii-sprites.js';
 
 const { invoke } = window.__TAURI__.core;
@@ -21,11 +21,15 @@ const { invoke } = window.__TAURI__.core;
 
 const LINT_PATH    = '/tmp/vexil_lint.json';
 const APPROVAL_PATH = '/tmp/vexil_approval.json';
+// Legacy hook gate paths (pixel_gate.py — power-user hooks)
 const HOOK_GATE_PATH      = '/tmp/pixel_hook_gate.json';
 const HOOK_GATE_RESP_PATH = '/tmp/pixel_hook_gate_response.json';
+// Session-scoped MCP gate paths (anima_gate.py — native approval)
+const ANIMA_GATE_PREFIX      = '/tmp/anima_gate_';
+const ANIMA_GATE_SUFFIX      = '.json';
+const ANIMA_GATE_RESP_SUFFIX = '_response.json';
 
 const POLL_INTERVAL = 3000;   // ms
-const BUBBLE_AUTODISMISS = 6000;  // ms for non-interactive bubbles
 
 // ── Species → sprite key fallback map ────────────────────────────────────────
 // Fallbacks used until proper pixel art is drawn for each species.
@@ -74,15 +78,9 @@ let _lastOpsKey   = '';       // prevent re-showing same ops report
 let _approvalPending = false;
 let _hookGatePending = false;
 let _hookGateReqId   = null;
-let _dismissTimer = null;
+let _hookGateSessionId = null;  // tracks which session's MCP gate is pending
 let _pollActive = false;
 let _masterOutOffset = 0;  // line count consumed from vexil_master_out.jsonl
-
-// 3-tier priority queue
-// Priority: BLOCK=3 (preempts everything), OPS=2 (preempts warn/ask), WARN/ASK=1
-const PRIORITY = { blocked: 3, ask: 3, ops: 2, warn: 1, vexil: 2 };
-let _messageQueue = [];       // [{msg, type, interactive, priority}]
-let _currentPriority = 0;    // priority of the currently-showing bubble
 
 // ── Tauri home dir ────────────────────────────────────────────────────────────
 
@@ -121,9 +119,6 @@ function injectCompanionPanel() {
 
   wrap.innerHTML = `
     <div class="companion-sprite-wrap" id="companion-sprite"></div>
-    <div class="companion-bubble hidden" id="companion-bubble">
-      <div class="companion-bubble-msg" id="companion-msg"></div>
-    </div>
   `;
 
   // Inject into body (fixed position via CSS)
@@ -247,47 +242,7 @@ function renderCompanionSprite() {
 
 // ── Bubble display ────────────────────────────────────────────────────────────
 
-function showBubble({ msg, type }) {
-  const wrap   = document.getElementById('companion-wrap');
-  const bubble = document.getElementById('companion-bubble');
-  const msgEl  = document.getElementById('companion-msg');
-
-  if (!wrap || !bubble) return;
-
-  // Clear any pending autodismiss
-  if (_dismissTimer) { clearTimeout(_dismissTimer); _dismissTimer = null; }
-
-  msgEl.textContent = msg;
-  bubble.className = `companion-bubble ${type}`;
-
-  wrap.classList.remove('hidden');
-  bubble.classList.remove('hidden');
-  _currentPriority = PRIORITY[type] ?? 1;
-
-  // Push log content up so bubble doesn't overlap last lines
-  const log = document.getElementById('message-log');
-  if (log) { log.classList.add('companion-active'); log.scrollTop = log.scrollHeight; }
-
-  _dismissTimer = setTimeout(() => hideBubble(), BUBBLE_AUTODISMISS);
-}
-
-function hideBubble() {
-  const wrap = document.getElementById('companion-wrap');
-  const bubble = document.getElementById('companion-bubble');
-  if (wrap) wrap.classList.add('hidden');
-  if (bubble) bubble.classList.add('hidden');
-  _currentPriority = 0;
-  // Drain queue: show next message if one is waiting
-  if (_messageQueue.length > 0) {
-    const next = _messageQueue.shift();
-    showBubble(next);
-  } else {
-    // No more queued messages — release the bottom clearance
-    document.getElementById('message-log')?.classList.remove('companion-active');
-  }
-}
-
-// ── Priority-aware enqueue ────────────────────────────────────────────────────
+// ── Approval dialog (standalone — no bubble) ─────────────────────────────────
 
 function showApprovalDialog(msg) {
   document.getElementById('approval-msg').textContent = msg;
@@ -296,25 +251,6 @@ function showApprovalDialog(msg) {
 
 function hideApprovalDialog() {
   document.getElementById('approval-overlay').classList.add('hidden');
-  // Drain any queued non-interactive bubble messages
-  hideBubble();
-}
-
-function enqueueBubble({ msg, type, interactive }) {
-  if (interactive) {
-    // Approval requests go to the neutral system dialog, not the companion bubble
-    showApprovalDialog(msg);
-    return;
-  }
-  const priority = PRIORITY[type] ?? 1;
-  if (priority >= _currentPriority && !_approvalPending) {
-    // Higher or equal priority — show immediately (preempt)
-    if (_dismissTimer) { clearTimeout(_dismissTimer); _dismissTimer = null; }
-    showBubble({ msg, type, interactive });
-  } else {
-    // Lower priority or approval pending — queue it
-    _messageQueue.push({ msg, type, interactive });
-  }
 }
 
 // ── Approval IPC ──────────────────────────────────────────────────────────────
@@ -322,13 +258,21 @@ function enqueueBubble({ msg, type, interactive }) {
 async function writeApproval(approved) {
   try {
     if (_hookGatePending) {
-      // Route to hook gate response file (pixel_gate.py is polling this)
       const payload = JSON.stringify({ id: _hookGateReqId, approved });
-      await invoke('write_file_as_text', { path: HOOK_GATE_RESP_PATH, content: payload });
-      // Clear gate file so the poller doesn't re-trigger before pixel_gate.py picks up the response
-      await invoke('write_file_as_text', { path: HOOK_GATE_PATH, content: '{}' }).catch(() => {});
+      if (_hookGateSessionId) {
+        // MCP gate response (anima_gate.py is polling this)
+        const respPath = ANIMA_GATE_PREFIX + _hookGateSessionId + ANIMA_GATE_RESP_SUFFIX;
+        const gatePath = ANIMA_GATE_PREFIX + _hookGateSessionId + ANIMA_GATE_SUFFIX;
+        await invoke('write_file_as_text', { path: respPath, content: payload });
+        await invoke('write_file_as_text', { path: gatePath, content: '{}' }).catch(() => {});
+      } else {
+        // Legacy hook gate response (pixel_gate.py is polling this)
+        await invoke('write_file_as_text', { path: HOOK_GATE_RESP_PATH, content: payload });
+        await invoke('write_file_as_text', { path: HOOK_GATE_PATH, content: '{}' }).catch(() => {});
+      }
       _hookGatePending = false;
       _hookGateReqId   = null;
+      _hookGateSessionId = null;
     } else {
       // Route to Vexil approval file (memory_lint.py is polling this)
       const payload = JSON.stringify({ approved });
@@ -345,33 +289,56 @@ async function writeApproval(approved) {
 }
 
 // ── Hook gate poller ──────────────────────────────────────────────────────────
-// Checks /tmp/pixel_hook_gate.json — written by pixel_gate.py when a tool call
-// needs user approval. Higher urgency than Vexil lint (a hook is blocking).
+// Polls two sources for permission gate requests:
+// 1. Session-scoped MCP gate files: /tmp/anima_gate_{sessionId}.json (anima_gate.py)
+// 2. Legacy global gate file: /tmp/pixel_hook_gate.json (pixel_gate.py hooks)
 
 async function pollHookGate() {
   if (_hookGatePending) return;  // already showing gate bubble — wait for user
+
+  // Poll MCP gate files for all active sessions
+  if (sessions?.size) {
+    for (const [sessionId] of sessions) {
+      const gatePath = ANIMA_GATE_PREFIX + sessionId + ANIMA_GATE_SUFFIX;
+      try {
+        const raw = await invoke('read_file_as_text', { path: gatePath });
+        const gate = JSON.parse(raw);
+        if (!gate?.id || !gate?.msg) continue;
+        if (Date.now() / 1000 > gate.expires) continue;
+
+        _hookGatePending = true;
+        _hookGateReqId   = gate.id;
+        _hookGateSessionId = sessionId;
+        invoke('js_log', { msg: `[mcp-gate] ${gate.msg?.slice(0, 80)}` }).catch(() => {});
+        showApprovalDialog(gate.msg);
+        return;
+      } catch {
+        // file missing or partial write — skip
+      }
+    }
+  }
+
+  // Fallback: legacy global gate file (pixel_gate.py hooks)
   let raw;
   try {
     raw = await invoke('read_file_as_text', { path: HOOK_GATE_PATH });
   } catch {
-    return;  // file missing = no gate pending
+    return;
   }
   let gate;
   try {
     gate = JSON.parse(raw);
   } catch {
-    setTimeout(pollHookGate, 50);  // partial write in flight — retry once after 50ms
     return;
   }
   if (!gate?.id || !gate?.msg) return;
-  if (Date.now() / 1000 > gate.expires) return;  // stale request
+  if (Date.now() / 1000 > gate.expires) return;
 
   _hookGatePending = true;
   _hookGateReqId   = gate.id;
+  _hookGateSessionId = null;  // legacy — no session scope
   invoke('js_log', { msg: `[hook-gate] ${gate.msg?.slice(0, 80)}` }).catch(() => {});
-  enqueueBubble({ msg: gate.msg, type: 'ask', interactive: true });
-  // Gate messages are interactive (bubble handles approve/deny) — not logged to BUDDY tab
-  // since the log entry has no action buttons and would show confusingly in red.
+  showApprovalDialog(gate.msg);
 }
 
 // ── Lint file poller ──────────────────────────────────────────────────────────
@@ -405,20 +372,16 @@ async function pollLintFile() {
   const msg   = lint.msg;
 
   if (state === 'clean' || !msg) {
-    // Clean state — ensure bubble is hidden
-    hideBubble();
     return;
   }
 
   invoke('js_log', { msg: `[vexil-lint] state:${state} "${msg?.slice(0, 80)}"` }).catch(() => {});
 
   if (state === 'needs_approval') {
-    // Interactive bubble handles user communication — no log entry needed
     _approvalPending = true;
-    enqueueBubble({ msg, type: 'ask', interactive: true });
+    showApprovalDialog(msg);
   } else if (state === 'approved' || state === 'denied' || state === 'timeout_pass') {
-    // Terminal states — bubble auto-dismisses, no log entry
-    hideBubble();
+    hideApprovalDialog();
   } else {
     // blocked / warn — genuinely informational, log to BUDDY tab
     addToLintLog(state, msg);
@@ -446,8 +409,7 @@ async function pollOpsReport() {
     } else {
       msg = `${session_deletes} deleted. ${session_adds} added. ${unaccounted} unaccounted.`;
       addToLintLog('ops', msg);
-      // Unaccounted deletes = potential data loss — surface in bubble
-      enqueueBubble({ msg, type: 'ops', interactive: false });
+      // Unaccounted deletes = potential data loss — logged above
     }
   } catch (_) { /* file not yet written */ }
 }

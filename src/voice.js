@@ -248,7 +248,7 @@ function initOraclePreChat() {
       const resp = await invoke('oracle_query', {
         message: text,
         history: _history.slice(-6),
-        req_id: reqId,
+        reqId: reqId,
         sessions: [...sessions.values()].map(s => ({ name: s.name, cwd: s.cwd })),
       });
       if (_thinkingEl) { _thinkingEl.remove(); _thinkingEl = null; }

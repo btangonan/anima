@@ -287,7 +287,7 @@ canvas.sprite-canvas {
 
 .fc-stat-fill {
   height: 100%;
-  background: var(--fc-rarity-color, #555);
+  background: #555;
   transition: width 0.3s ease;
 }
 

@@ -35,6 +35,7 @@
   --sp-2: 4px;       /* compact: inner padding */
   --sp-3: 8px;       /* standard: section padding */
   --sp-4: 16px;      /* loose: modal/overlay padding */
+  --sp-5: 24px;      /* spacious: content-to-chrome clearance */
 
   /* ── Line-height scale ── */
   --lh-tight: 1.2;   /* labels, meta, compact elements */
@@ -315,7 +316,7 @@ body {
 #message-log {
   flex: 1;
   overflow-y: auto;
-  padding: var(--sp-3) var(--sp-3) var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) var(--sp-5);
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -1826,7 +1827,7 @@ body.no-session-active #btn-new-session.plus-inverted {
 
 .fc-stat-fill {
   height: 100%;
-  background: var(--fc-rarity-color, #555);
+  background: #555;
   transition: width 0.3s ease;
 }
 
