@@ -207,14 +207,14 @@ export function handleEvent(id, event) {
           if (b.name === 'mcp__sequential-thinking__sequentialthinking') {
             s._seqThinkCount = (s._seqThinkCount || 0) + 1;
             const stepLabel = s._seqThinkCount === 1
-              ? '⟳ reasoning…'
-              : `⟳ reasoning · step ${s._seqThinkCount}`;
+              ? 'reasoning…'
+              : `reasoning · step ${s._seqThinkCount}`;
             pxLog('SEQ-THINK', `id:${id.slice(0,8)} step:${s._seqThinkCount} active:${getActiveSessionId() === id} hasEl:${!!s._seqThinkEl}`);
             if (s._seqThinkEl && getActiveSessionId() === id) {
-              const label = s._seqThinkEl.querySelector('.system-label');
-              if (label) label.textContent = stepLabel;
+              const label = s._seqThinkEl.querySelector('.seq-think-label');
+              if (label) label.innerHTML = `<span class="seq-think-spinner">⟳</span> ${stepLabel}`;
             } else {
-              s._seqThinkEl = pushMessage(id, { type: 'system-msg', text: stepLabel });
+              s._seqThinkEl = pushMessage(id, { type: 'seq-think', text: stepLabel });
               pxLog('SEQ-THINK', `pushMessage returned: ${s._seqThinkEl ? 'element' : 'null'}`);
             }
           }
@@ -370,6 +370,13 @@ export function handleEvent(id, event) {
         s._vexilTurn = false;
         s._confirmedVexil = false;
         s._turnToolCount = 0;
+        if (s._seqThinkEl) {
+          const label = s._seqThinkEl.querySelector('.seq-think-label');
+          if (label) {
+            label.innerHTML = `✓ reasoned · ${s._seqThinkCount} step${s._seqThinkCount > 1 ? 's' : ''}`;
+            label.classList.add('seq-think-done');
+          }
+        }
         s._seqThinkCount = 0;
         s._seqThinkEl = null;
         setStatus(id, 'idle');

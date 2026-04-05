@@ -403,6 +403,28 @@ body.no-session-active #empty-state { display: block; }
 .system-label::before { content: '-- '; }
 .system-label::after  { content: ' --'; }
 
+/* Sequential thinking indicator */
+.seq-think-label {
+  font-family: var(--font);
+  font-size: var(--fs-sm);
+  color: #40E0D0;
+  padding: 2px 0;
+  line-height: var(--lh-tight);
+  letter-spacing: 0.5px;
+}
+.seq-think-spinner {
+  display: inline-block;
+  animation: seq-spin 1.2s linear infinite;
+}
+@keyframes seq-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.seq-think-done {
+  color: var(--text-mute);
+  opacity: 0.6;
+}
+
 .error-msg {
   color: var(--error-col);
   font-family: var(--font);
