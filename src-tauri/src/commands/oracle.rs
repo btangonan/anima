@@ -56,6 +56,12 @@ impl OraclePool {
         }
     }
 
+    /// Prime the subprocess with a throwaway query so first real query is fast.
+    pub async fn prime(&self) {
+        let _ = self.query("Say OK", "", 10).await;
+        println!("[{}] primed", self.label);
+    }
+
     async fn try_spawn(&self) -> Option<OracleProc> {
         let claude = which_claude().await?;
         let mut cmd = Command::new(&claude);

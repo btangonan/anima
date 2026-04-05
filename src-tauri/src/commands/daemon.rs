@@ -83,7 +83,7 @@ impl DaemonShared {
             sem:             Arc::new(Semaphore::new(2)),
             commentary_busy: Arc::new(AtomicBool::new(false)),
             oracle:          super::oracle::OraclePool::new("claude-haiku-4-5-20251001", 0, "oracle"),
-            commentary:      super::oracle::OraclePool::new("claude-sonnet-4-6", 8, "commentary"),
+            commentary:      super::oracle::OraclePool::new("claude-haiku-4-5-20251001", 12, "commentary"),
         })
     }
 }
@@ -278,6 +278,11 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
     if claude_ok {
         shared.oracle.spawn().await;
         shared.commentary.spawn().await;
+        // Prime both subprocesses so first real query is fast
+        let o = shared.oracle.clone();
+        let c = shared.commentary.clone();
+        tokio::spawn(async move { o.prime().await; });
+        tokio::spawn(async move { c.prime().await; });
     }
 
     loop {
