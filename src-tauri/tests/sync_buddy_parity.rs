@@ -46,7 +46,7 @@ fn test_wyhash_seed_parity() {
     let mut mismatches = 0usize;
 
     for v in &fix.vectors {
-        let got = wyhash_seed(&v.uuid);
+        let got = wyhash_seed(&v.uuid, "friend-2026-401");
         if got != v.seed {
             eprintln!("[SEED MISMATCH] uuid={:?}  expected={}  got={}", v.uuid, v.seed, got);
             mismatches += 1;

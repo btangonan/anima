@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-const SALT: &str = "friend-2026-401";
+const DEFAULT_SALT: &str = "friend-2026-401";
 
 // ── Zig std.hash.Wyhash (matches Bun.hash exactly) ───────────────────────────
 //
@@ -181,8 +181,8 @@ impl Mulberry32 {
 // JS: `Number(BigInt(Bun.hash(uuid + SALT)) & 0xFFFFFFFFn) >>> 0`
 // Bun.hash() = wyhash with seed 0. Take lower 32 bits.
 
-pub fn wyhash_seed(uuid: &str) -> u32 {
-    let input = format!("{}{}", uuid, SALT);
+pub fn wyhash_seed(uuid: &str, salt: &str) -> u32 {
+    let input = format!("{}{}", uuid, salt);
     let h = zig_wyhash(input.as_bytes(), 0);
     (h & 0xFFFF_FFFF) as u32
 }
@@ -200,7 +200,11 @@ pub struct Bones {
 }
 
 pub fn roll_bones(uuid: &str) -> Bones {
-    let seed = wyhash_seed(uuid);
+    roll_bones_with_salt(uuid, DEFAULT_SALT)
+}
+
+pub fn roll_bones_with_salt(uuid: &str, salt: &str) -> Bones {
+    let seed = wyhash_seed(uuid, salt);
     let mut rand = Mulberry32::new(seed);
 
     // Roll 1: Rarity (weighted)
@@ -315,6 +319,16 @@ pub fn sync_buddy() -> Result<SyncResult, String> {
         .to_string();
     let hatched_at = soul.get("hatchedAt").and_then(|v| v.as_i64()).unwrap_or(0);
 
+    // Resolve salt: any-buddy override or default
+    let salt = {
+        let ab_path = PathBuf::from(&home).join(".claude-code-any-buddy.json");
+        fs::read_to_string(&ab_path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+            .and_then(|v| v.get("salt").and_then(|s| s.as_str()).map(String::from))
+            .unwrap_or_else(|| DEFAULT_SALT.to_string())
+    };
+
     // Staleness guard
     let buddy_path = PathBuf::from(&home).join(".config/pixel-terminal/buddy.json");
     if buddy_path.exists() {
@@ -322,12 +336,15 @@ pub fn sync_buddy() -> Result<SyncResult, String> {
             if let Ok(existing) = serde_json::from_str::<Value>(&existing_raw) {
                 let synced_at   = existing.get("syncedAt").and_then(|v| v.as_i64()).unwrap_or(-1);
                 let synced_from = existing.get("syncedFrom").and_then(|v| v.as_str()).unwrap_or("");
-                // Compare hatchedAt + name + personality — catches re-rolls, renames, and personality edits
+                let existing_salt = existing.get("companionSeed").and_then(|v| v.as_str()).unwrap_or(DEFAULT_SALT);
+                // Compare hatchedAt + name + personality + salt — catches re-rolls, renames,
+                // personality edits, and any-buddy salt changes
                 let existing_name = existing.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let soul_name     = soul.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let existing_pers = existing.get("personality").and_then(|v| v.as_str()).unwrap_or("");
                 let soul_pers     = soul.get("personality").and_then(|v| v.as_str()).unwrap_or("");
                 if synced_at == hatched_at && synced_from == "claude-code"
+                    && existing_salt == salt
                     && (soul_name.is_empty() || existing_name == soul_name)
                     && (soul_pers.is_empty() || existing_pers == soul_pers)
                 {
@@ -344,7 +361,7 @@ pub fn sync_buddy() -> Result<SyncResult, String> {
     }
 
     // Roll bones and derive voice
-    let bones = roll_bones(&uuid);
+    let bones = roll_bones_with_salt(&uuid, &salt);
     let voice = derive_voice(&bones.stats);
     let hue   = species_hue(&bones.species).to_string();
 
@@ -383,6 +400,7 @@ pub fn sync_buddy() -> Result<SyncResult, String> {
     obj.insert("stats".to_string(),    serde_json::to_value(&bones.stats).unwrap());
     obj.insert("voice".to_string(),    Value::String(voice.to_string()));
     obj.insert("hue".to_string(),      Value::String(hue));
+    obj.insert("companionSeed".to_string(), Value::String(salt));
     obj.insert("syncedFrom".to_string(), Value::String("claude-code".to_string()));
     obj.insert("syncedAt".to_string(), Value::Number(hatched_at.into()));
 
