@@ -10,6 +10,7 @@
 [![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange)](https://github.com/btangonan/pixel-terminal/releases)
 
 **Your Claude Code environment, inhabited.**
+A native macOS frontend for Claude Code — with a gamified companion, token economy, and cross-session watcher.
 
 </div>
 
@@ -17,7 +18,7 @@
 
 Twelve terminal windows. All anonymous. Each one running a different Claude session: refactoring auth, writing tests, debugging a build. Nothing to tell them apart but a number in the title bar.
 
-Anima fixes that. Every session gets a companion — a generated pixel creature with its own name, species, and personality. They watch your work, fire commentary when something's off, and persist across sessions so your projects feel less like ephemeral processes and more like a place where things live.
+Anima fixes that. It's a native macOS app that wraps the Claude Code CLI and gives every session a companion — a generated pixel creature with its own name, species, and personality. They watch your work, fire commentary when something's off, and persist across sessions so your projects feel less like ephemeral processes and more like a place where things live.
 
 The name comes from animism. Inhabited spaces teem with activity. Not sacred. Just alive.
 
@@ -32,10 +33,12 @@ The name comes from animism. Inhabited spaces teem with activity. Not sacred. Ju
 Open a project and a companion appears — species drawn from a weighted rarity pool, personality seeded from the project path. Rare pulls happen. Two developers on the same codebase won't get the same creature. Each familiar card logs your project's stats: tokens spent, tools used, sessions run.
 
 **Token spend means something.**
-The Claude Code weekly limit is easy to treat as a ceiling to avoid. Anima reframes it. Every 1000 tokens earns 1 nim — the in-app currency. Nim funds re-rolls, new companions, cosmetics. Not a limit to dread. A counter to fill.
+The Claude Code weekly limit is easy to treat as a ceiling to avoid. Anima reframes it. Every 1000 tokens earns 1 nim — the in-app currency. Nim funds re-rolls, new companions, cosmetics. Not a limit to dread. A counter to fill — on tokens you'd spend anyway.
 
 **You're not working alone.**
 Vexil is the cross-session watcher daemon running in the Rust backend while Claude works. It tracks tool patterns across all active sessions: reads when you're reading too much, spots retry loops before you've noticed them. When it catches you going in circles, something shifts. It's not *I'm stuck*. It's *we're stuck*. That's enough.
+
+*Commentary runs as short background prompts via the Claude CLI — capped at 2 concurrent calls. All processing is local; nothing leaves your machine except the API calls you'd make anyway.*
 
 ---
 
@@ -47,7 +50,7 @@ Vexil is the cross-session watcher daemon running in the Rust backend while Clau
 | 🎮 **Nim economy** | 1 nim per 1000 tokens spent. Spend on re-rolls and new characters. Progress, not anxiety. |
 | 📋 **Familiar cards** | Each project gets a collectible card: species, rarity, stats, session history. Like a Pokémon card for your codebase. |
 | 👁️ **Cross-session watcher** | Rust daemon monitors all active Claude sessions simultaneously. Catches retry loops and read-heavy spirals in real time. |
-| 🎙️ **Voice** | Omi pendant + push-to-talk. Hands-free Claude. WebSocket bridge, no intermediary. |
+| 🎙️ **Voice** | Bluetooth mic + push-to-talk. Hands-free Claude. WebSocket bridge, no intermediary. |
 | 📜 **Session history** | Full session browser. Replay any past conversation. JSONL-backed, O(1) scan per file. |
 | ⚡ **Native** | Tauri v2 + Rust backend. Not Electron. Actual macOS app. |
 
@@ -116,7 +119,7 @@ cd src-tauri && cargo test
 
 ## How it works
 
-Anima is a Tauri v2 desktop app. The frontend is vanilla JS — no framework, no bundler. The Rust backend handles file I/O, path security, companion sync, and the cross-session watcher. A WebSocket bridge connects to the Omi voice API.
+Anima is a Tauri v2 desktop app. The frontend is vanilla JS — no framework, no bundler. The Rust backend handles file I/O, path security, companion sync, and the cross-session watcher. A WebSocket bridge handles voice input.
 
 The watcher (`daemon.rs`) is a Tokio async loop that polls Claude Code's session feed, tracks tool sequences across all active sessions, and emits companion commentary via Tauri events when patterns fire. The oracle — the voice behind the companion bubble — is a `claude -p` subprocess with personality context injected from your companion's species and stats.
 

@@ -121,9 +121,9 @@ function _omiIndicatorUpdate() {
   $.omiIndicator.classList.remove('connected');
   if (omiConnected) {
     $.omiIndicator.classList.add('connected');
-    $.omiIndicator.title = 'Omi connected \u2014 click for settings (fn = push to talk)';
+    $.omiIndicator.title = 'Voice connected \u2014 click for settings (fn = push to talk)';
   } else {
-    $.omiIndicator.title = 'Omi voice bridge disconnected \u2014 click for settings';
+    $.omiIndicator.title = 'Voice bridge disconnected \u2014 click for settings';
   }
 }
 
