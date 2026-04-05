@@ -1,11 +1,11 @@
 // ── DOM utilities + cache ─────────────────────────────────
 
-const _mdParse = window.marked.parse.bind(window.marked);
-window.marked.setOptions({ breaks: true, gfm: true });
-
-// Sanitize marked output before DOM injection — prevents XSS from LLM-injected HTML
+// Sanitize marked output before DOM injection — prevents XSS from LLM-injected HTML.
+// Options and parse call are deferred to function body so this module is importable
+// in non-browser environments (Vitest/jsdom) without window.marked at load time.
 function mdParse(text) {
-  return window.DOMPurify.sanitize(_mdParse(text));
+  window.marked.setOptions({ breaks: true, gfm: true });
+  return window.DOMPurify.sanitize(window.marked.parse(text));
 }
 
 // DOM cache — populated by initDOM()
