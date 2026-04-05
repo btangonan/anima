@@ -8,9 +8,10 @@ use tauri::{
 mod ws_bridge;
 use ws_bridge::{get_voice_status, ptt_release, ptt_start, set_omi_listening, set_voice_mode, switch_voice_source, sync_omi_sessions};
 
-mod commands;
+pub mod commands;
 use commands::file_io::{append_line_to_file, get_file_size, get_file_size_any, read_file_as_base64, read_file_as_text, write_file_as_text};
 use commands::history::{load_session_history, scan_session_history};
+use commands::companion::sync_buddy;
 use commands::misc::{js_log, read_slash_command_content, read_slash_commands, register_child_pid, send_signal, unregister_child_pid};
 use commands::misc::SpawnedPids;
 
@@ -86,7 +87,8 @@ pub fn run() {
             send_signal,
             js_log,
             write_file_as_text,
-            append_line_to_file
+            append_line_to_file,
+            sync_buddy
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
