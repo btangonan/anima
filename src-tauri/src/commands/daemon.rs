@@ -571,12 +571,12 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
 
         // ── Read new feed entries (no lock held during async I/O) ─────────────
         let (offset, inode) = {
-            let st = shared.state.lock().unwrap();
+            let st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
             (st.feed_offset, st.feed_inode)
         };
         let (new_entries, new_offset, new_inode) = read_new_lines(&feed_path, offset, inode).await;
         {
-            let mut st = shared.state.lock().unwrap();
+            let mut st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
             st.feed_offset = new_offset;
             st.feed_inode  = new_inode;
         }
@@ -589,7 +589,7 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
         let mut tool_sids: HashSet<String>          = HashSet::new();
 
         {
-            let mut st = shared.state.lock().unwrap();
+            let mut st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
             // Expire TTL-based fired_patterns
             st.fired_patterns.retain(|_, ts| now - *ts < FIRED_PATTERN_TTL_S);
 
@@ -663,13 +663,13 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
         // ── Turn-complete commentary (per-session 20s cooldown) ───────────────
         for (tc_sid, tc_entry) in &tc_batch {
             let since = {
-                let st = shared.state.lock().unwrap();
+                let st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                 now - st.last_comment_per.get(tc_sid).copied().unwrap_or(0.0)
             };
             if since < TURN_COOLDOWN_S { continue; }
 
             let (recent_acts, persona) = {
-                let st = shared.state.lock().unwrap();
+                let st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                 let acts: Vec<(String, String)> = st.recent_activity.get(tc_sid)
                     .map(|a| a.iter().filter(|(ts, _, _, _, _)| now - ts <= 60.0)
                         .map(|(_, t, h, _, _)| (t.clone(), h.clone())).collect())
@@ -687,7 +687,7 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
                 "turn_text":  tc_entry["turn_text"],
                 "user_msg":   tc_entry["user_msg"],
             });
-            { let mut st = shared.state.lock().unwrap(); st.last_comment_per.insert(tc_sid.clone(), now); }
+            { let mut st = shared.state.lock().unwrap_or_else(|e| e.into_inner()); st.last_comment_per.insert(tc_sid.clone(), now); }
             shared.commentary_busy.store(true, Ordering::Relaxed);
             let sh = shared.clone();
             tokio::spawn(commentary_worker("turn_complete".into(), data, persona, sh));
@@ -696,10 +696,10 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
         if shared.commentary_busy.load(Ordering::Relaxed) { continue; }
 
         // ── Pattern triggers (global 60s cooldown) ────────────────────────────
-        let last_global = { shared.state.lock().unwrap().last_comment_ts };
+        let last_global = { shared.state.lock().unwrap_or_else(|e| e.into_inner()).last_comment_ts };
         if (now - last_global) > COOLDOWN_S {
             let trigger_opt = {
-                let st = shared.state.lock().unwrap();
+                let st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                 tool_sids.iter().find_map(|sid| {
                     check_tool_patterns(sid, &st, now).and_then(|(trigger, data)| {
                         let key = format!("{sid}:{trigger}");
@@ -709,7 +709,7 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
             };
             if let Some((trigger, data, key)) = trigger_opt {
                 let persona = {
-                    let mut st = shared.state.lock().unwrap();
+                    let mut st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                     st.fired_patterns.insert(key, now);
                     st.last_comment_ts = now;
                     build_persona(&st.recent_actions)
@@ -722,7 +722,7 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
 
             // ── Activity tick ─────────────────────────────────────────────────
             let (tools_since, summary_parts, persona) = {
-                let st = shared.state.lock().unwrap();
+                let st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                 let parts: Vec<String> = st.recent_activity.iter().filter_map(|(sid, acts)| {
                     let filtered: Vec<&ActEntry> = acts.iter()
                         .filter(|(ts, _, _, _, _)| now - ts <= ACTIVITY_RECENCY_S).collect();
@@ -737,7 +737,7 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
             if tools_since >= ACTIVITY_TRIGGER_CNT {
                 if !summary_parts.is_empty() {
                     {
-                        let mut st = shared.state.lock().unwrap();
+                        let mut st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                         st.tools_since = 0;
                         st.last_comment_ts = now;
                     }
@@ -747,21 +747,21 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
                     tokio::spawn(commentary_worker("session_activity".into(), data, persona, sh));
                     continue;
                 } else {
-                    let mut st = shared.state.lock().unwrap();
+                    let mut st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                     st.tools_since = 0;
                 }
             }
 
             // ── Cross-session error ───────────────────────────────────────────
             let error_trigger = {
-                let st = shared.state.lock().unwrap();
+                let st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                 st.tool_errors.iter()
                     .find(|(_, sids)| sids.iter().collect::<std::collections::HashSet<_>>().len() >= 2)
                     .map(|(k, sids)| (k.clone(), sids.clone()))
             };
             if let Some((key, sids)) = error_trigger {
                 let persona = {
-                    let mut st = shared.state.lock().unwrap();
+                    let mut st = shared.state.lock().unwrap_or_else(|e| e.into_inner());
                     st.last_comment_ts = now;
                     build_persona(&st.recent_actions)
                 };
