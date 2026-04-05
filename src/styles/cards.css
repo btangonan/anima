@@ -393,9 +393,9 @@ canvas.sprite-canvas {
 }
 .fc-confirm-warning {
   font-size: var(--fs-xs);
-  color: #c0392b;
+  color: var(--warn);
   letter-spacing: 0.3px;
-  border-left: 2px solid #c0392b;
+  border-left: 2px solid var(--warn);
   padding-left: 8px;
 }
 .fc-confirm-actions {
@@ -415,12 +415,12 @@ canvas.sprite-canvas {
   transition: color 0.1s, border-color 0.1s;
 }
 .fc-confirm-btn--go {
-  color: #c0392b;
-  border-color: #c0392b;
+  color: var(--warn);
+  border-color: var(--warn);
 }
 .fc-confirm-btn--go:hover {
-  background: #c0392b;
-  color: #fff;
+  background: var(--warn);
+  color: #000;
 }
 .fc-confirm-btn--cancel:hover {
   color: var(--accent);
