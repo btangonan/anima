@@ -272,7 +272,7 @@ function initOraclePreChat() {
     el.className = 'vexil-entry vexil-entry--buddy';
     el.innerHTML = `<span class="vexil-ts">[${ts}]</span>${escapeHtml(entry.msg)}`;
     _oracleChatLog?.appendChild(el);
-    if (_oracleChatLog) _oracleChatLog.scrollTop = _oracleChatLog.scrollHeight;
+    if (_oracleChatLog) requestAnimationFrame(() => { _oracleChatLog.scrollTop = _oracleChatLog.scrollHeight; });
 
     _history.push({ role: 'user', content: _pendingMsg });
     _history.push({ role: 'oracle', content: entry.msg });

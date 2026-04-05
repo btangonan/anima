@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-use std::sync::Mutex;
 extern crate libc;
 
 use tauri::{
@@ -236,7 +234,7 @@ mod tests {
 /// ─────────────────────────────────────────────────────────────────────────────
 #[cfg(target_os = "macos")]
 fn set_squircle_dock_icon() {
-    use cocoa::appkit::NSImage;
+
     use cocoa::base::nil;
     use cocoa::foundation::{NSData, NSPoint, NSRect, NSSize};
     use objc::runtime::Object;

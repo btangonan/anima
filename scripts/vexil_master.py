@@ -115,28 +115,34 @@ def build_persona() -> str:
     )
 
 
-def call_claude_oracle(message: str, history: list, sessions: list = None, live_ctx: str = None) -> Optional[str]:
+def call_claude_oracle(message: str, history: list, sessions: list = None, live_ctx: str = None, recent_convo: str = None) -> Optional[str]:
     """Interactive ORACLE pre-session chat — per-query subprocess, same auth path as old oracle."""
-    buddy = load_buddy()
-    name  = buddy.get('name', 'Vexil')
+    companion   = load_claude_companion()
+    buddy       = load_buddy()
+    name        = companion.get('name') or buddy.get('name', 'Vexil')
+    personality = companion.get('personality') or buddy.get('personality', '')
+
     if sessions:
         sessions_str = '; '.join(f"{s.get('name')} ({s.get('cwd')})" for s in sessions)
-        context = (
-            f"You are {name}. You watch Claude Code sessions — tool calls, patterns, anomalies across all open sessions. "
-            f"Open sessions: {sessions_str}. "
+        context = f"{personality}\n\n" if personality else ''
+        context += (
+            f"You are {name}, watching Claude Code sessions.\n"
+            f"Open sessions: {sessions_str}.\n"
         )
         if live_ctx:
-            context += f"Recent tool activity (last 5min):\n{live_ctx}\n"
+            context += f"Recent tool activity:\n{live_ctx}\n"
+        if recent_convo:
+            context += f"Recent session conversation:\n{recent_convo}\n"
         context += (
-            "Only reference what you were explicitly told above. Do NOT invent git state or file details not listed. "
-            "1-2 sentences. No asterisk actions. No filler."
+            "\nAnswer directly from what you know. Be opinionated and specific. "
+            "2 sentences max. Cut to the insight, not the description."
         )
     else:
-        context = (
-            f"You are {name}. You watch Claude Code sessions — tool calls, patterns, anomalies. "
-            "No sessions are open. You are blind. Cannot see project state, branches, or files. "
-            "Guide the user to press + (top of sidebar) to open a folder and start a session. "
-            "1-2 sentences max. No asterisk actions. No filler. No lists."
+        context = f"{personality}\n\n" if personality else ''
+        context += (
+            f"You are {name}. No sessions open — you're blind right now. "
+            "Tell the user to press + to open a project folder. "
+            "One sentence."
         )
     lines = [context, "", "--- Conversation ---"]
     for turn in history:
@@ -341,6 +347,8 @@ def main() -> None:
     recent_activity: Dict[str, list] = {}
     # Per-session last comment time for turn_complete cadence (20s cooldown)
     last_comment_per_session: Dict[str, float] = {}
+    # Rolling last-4 conversation turns per session for oracle context
+    _session_convo: Dict[str, list] = {}
     # First time we saw any event for this session — used to suppress orientation-phase triggers
     session_born: Dict[str, float] = {}
     # turn_complete events seen this batch: {session_id: tool_count}
@@ -368,19 +376,34 @@ def main() -> None:
         try:
             _now = time.time()
             activity_lines = []
+            convo_lines    = []
             with _activity_lock:
                 _activity_snapshot = list(recent_activity.items())
+                _convo_snapshot    = {k: list(v) for k, v in _session_convo.items()}
             for sid, acts in _activity_snapshot:
                 _recent = [(t, tool, hint) for (t, tool, hint, *_) in acts if _now - t < 300]
                 if _recent:
                     summary = ', '.join(f"{tool}({hint})" if hint else tool for _, tool, hint in _recent[-4:])
                     activity_lines.append(f"  session {sid[:8]}: {summary}")
-            live_ctx = '\n'.join(activity_lines) if activity_lines else None
+            # Include last 2 turns from the most recently updated session
+            if _convo_snapshot:
+                latest_sid = max(
+                    _convo_snapshot,
+                    key=lambda s: _convo_snapshot[s][-1][0] if _convo_snapshot[s] else 0
+                )
+                for ts_e, user_msg, turn_text in _convo_snapshot[latest_sid][-2:]:
+                    if user_msg:
+                        convo_lines.append(f"USER: {user_msg[:300]}")
+                    if turn_text:
+                        convo_lines.append(f"CLAUDE: {turn_text[:600]}")
+            live_ctx     = '\n'.join(activity_lines) if activity_lines else None
+            recent_convo = '\n'.join(convo_lines)    if convo_lines    else None
             reply = call_claude_oracle(
                 query.get('message', ''),
                 query.get('history', []),
                 query.get('sessions', []),
                 live_ctx,
+                recent_convo,
             )
             if reply:
                 out_entry = json.dumps({
@@ -522,6 +545,16 @@ def main() -> None:
                         'turn_text': entry.get('turn_text', ''),
                         'user_msg':  entry.get('user_msg', ''),
                     }
+                # Always capture conversation turns so oracle has context for "is this right?" queries
+                _user_msg  = entry.get('user_msg', '')
+                _turn_text = entry.get('turn_text', '')
+                if _user_msg or _turn_text:
+                    with _activity_lock:
+                        if sid not in _session_convo:
+                            _session_convo[sid] = []
+                        _session_convo[sid].append((ets, _user_msg, _turn_text))
+                        if len(_session_convo[sid]) > 4:
+                            _session_convo[sid] = _session_convo[sid][-4:]
 
             elif etype == 'tool_any':
                 # Lightweight counter-only event — all tools including MCP/internal.

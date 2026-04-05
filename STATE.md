@@ -2,62 +2,70 @@
 ## Updated: 2026-04-04
 
 ### Active Branch
-`feat/familiar-card-phase2` — pushed, latest commit `e67afa3`
+`security/pr1-hardening` — PR #1 open, accumulated changes being pushed
 
-### Uncommitted Changes
-None — all session work committed and pushed.
+### What Shipped This Session (2026-04-04 — Session 2)
 
-### Shipped This Session (2026-04-04)
+#### Vexil Oracle Voice Rewrite
+| Problem | Root Cause | Fix |
+|---------|------------|-----|
+| Oracle silent (no responses) | `--max-tokens` is invalid claude CLI flag — exit code 1 every call | Removed flag from both subprocess calls |
+| Oracle blind to "is this right?" | `turn_complete` only emitted when `tool_count > 0` — pure chat turns never captured | `events.js`: emit for all turns with `turn_text` |
+| Generic confused voice | `call_claude_oracle()` never loaded companion personality | Now loads `load_claude_companion()` → `~/.claude.json` personality first |
+| Hedging, confused responses | "Only reference what you were told" instruction | Removed; replaced with "Be opinionated and specific. 2 sentences max." |
+| Cut off / scroll race | `scrollTop = scrollHeight` before layout reflow | `requestAnimationFrame` in `voice.js` |
+| Wrong session for context | `max(key=len)` picked most-history session | Now picks most-recent by timestamp |
 
-#### Familiar Name Generator
-- Syllable combiner in `src/session.js`: 61 starts × 35 ends = 2135 combos
-- 5 thematic pools: Asian Folklore, Polynesian, Tolkien/Elven, Valyrian, Cyber-Pet
-- Blocklist: `Aegon`, `Radon`, `Torys`, `Finbit` (4 entries — upstream pool fixes handle the rest)
-- `rollFamiliarBones(path, rerollCount=0)` — appends `-rN` suffix to seed for re-rolls
-- Name shown in profile card header as title; species shown as TYPE field
+#### Audit — Vexil Oracle + Sprite Spec
+- Full 8-stage audit + Gemini two-pass adversarial → `docs/preaudit/AUDIT_VEXIL_ORACLE_2026-04-04.md`
+- **CRITICAL found**: `ascii-sprites.js` per-frame line-drop vs spec all-frames (intentional — skip per user)
+- **CRITICAL found**: `attachments.js` reads file before size check (OOM risk) — pending PR #3
+- **WARNING corroborated**: `_read_file_context` uses `str.startswith()` not `is_relative_to()`
 
-#### @nim@ Currency System (`src/nim.js`)
-- Global balance in `localStorage['pixel-nim-balance']`
-- `NIM_PER_TOKENS = 1000` — 1 nim per 1000 tokens spent
-- `REROLL_NIM_COST = 0` — gate open for testing; change this one constant to charge
-- `accrueNimForSession(s)` hooked into `events.js` 'result' case after `s.tokens` commits
-- `_nimTokensAccrued: 0` on session shape prevents double-counting on session restart
-
-#### Re-roll Mechanic
-- `getFamiliarRerollCount(cwd)` / `incrementFamiliarReroll(cwd)` — localStorage per project path
-- Re-roll button in profile card footer — disabled+locked when balance < cost
-- `showRerollConfirm(sessionId)` — confirm dialog with cost / balance / "lost forever" warning
-- On confirm: spends nim, increments reroll count, re-rolls familiar, refreshes sidebar, reopens profile card
-- `_buildSpriteWrap(wrap, id)` helper — single source of truth for sidebar sprite DOM
-
-#### Cleanup
-- Familiar name label removed from sidebar session cards (profile card only)
-- `.familiar-name` CSS rule removed
+#### Accumulated from Previous Session (now committed)
+- App rename: "Pixel Claude" → **Anima**, bundle ID `com.bradleytangonan.anima`
+- Icons rebuilt (squircle PNG, all bundle sizes)
+- Security: 5 CRITICALs closed (path allowlist, XSS, CSP, vexil paths, thread safety)
+- Vitest 15/15 + cargo test 15/15
+- CSS split: `styles.css` → 5 modules
+- Rust split: `lib.rs` → `commands/` modules
 
 ### Pending / Next
-- **Live test** the re-roll flow in the actual app — unverified
-- **Oracle bug fixes**: src/voice.js + launch.command — still uncommitted from prior session
-- **Production PATH fix**: `get_shell_path()` Rust command for .app Dock launch
-- **Nim accrual display**: show nim balance somewhere in UI (sidebar footer? settings?)
-- **PR**: merge `feat/familiar-card-phase2` → main when re-roll is verified
 
-### Key IDs
-- Collection: `pixel_terminal` (gemini-memory)
-- Branch: `feat/familiar-card-phase2`
-- buddy.json: `~/.config/pixel-terminal/buddy.json`
-- Type scale: `--fs-lg(13) --fs-base(12) --fs-sm(11) --fs-xs(10)`
-- Log: `/tmp/pixel-terminal.log`
-- `FAMILIAR_SALT = 'pixel-familiar-2026'`
+#### PR #3 (next)
+- [ ] `attachments.js`: file size check before `read_file_as_base64` (OOM guard)
+- [ ] `src-tauri/src/commands/file_io.rs:_read_file_context`: `is_relative_to()` fix
+- [ ] `vexil_master.py`: inode check for feed rotation
+- [ ] `scripts/generate-buddy.js`: fix rollStat distribution (2d10 → intended behavior)
+- [ ] CI: `.github/workflows/test.yml`
+
+#### Launch Sequence
+- [ ] Demo GIF (30-45s)
+- [ ] README rewrite (`docs/launch/REPO_POSITIONING_PLAN.md`)
+- [ ] GitHub Release `v0.1.0-alpha` with `.dmg`
+- [ ] PR to `hesreallyhim/awesome-claude-code`
+- [ ] Show HN → r/ClaudeCode → r/rust
 
 ### Key Files
-- `src/nim.js` — @nim@ currency primitives (new this session)
-- `src/session.js` — rollFamiliarBones, name pools, reroll helpers
-- `src/cards.js` — profile card, confirm dialog, _buildSpriteWrap
-- `src/events.js` — nim accrual hook in 'result' case
+- `scripts/vexil_master.py` — oracle persona, `_session_convo`, commentary triggers
+- `src/events.js` — `turn_complete` emitted for all turns (tool + chat)
+- `src/voice.js` — oracle chat display, rAF scroll fix
+- `src/companion.js` — sprite rendering, buddy polling, master output poll
+- `src/ascii-sprites.js` — 18 species × 3 frames, `renderFrame()`
+- `src-tauri/src/commands/file_io.rs` — `expand_and_validate_path()`, path allowlist
+- `docs/preaudit/AUDIT_VEXIL_ORACLE_2026-04-04.md` — latest audit
+- `docs/launch/REPO_POSITIONING_PLAN.md` — launch strategy
 
-### Decisions
-- Nim is global (not per-session) — earned across all sessions, spent on any familiar
-- Re-roll determinism: same path + same count = same familiar forever
-- Blocklist rotates ends (no extra rng() calls) to avoid shifting stat seeds
-- REROLL_NIM_COST lives in nim.js as a single constant — one file change to gate
-- Name labels not shown in sidebar — profile card only
+### Key Constants
+- Font: Menlo (`/System/Library/Fonts/Menlo.ttc`)
+- Color: `#db7656` orange, `#0d0d0d` bg
+- `REROLL_NIM_COST = 0` in `src/nim.js` — gate open for testing
+- `NIM_PER_TOKENS = 1000` — 1 nim per 1000 tokens
+- `FAMILIAR_SALT = 'pixel-familiar-2026'`
+- Collection: `pixel_terminal` (gemini-memory)
+- buddy.json: `~/.config/pixel-terminal/buddy.json`
+- App name: **Anima** | Bundle ID: `com.bradleytangonan.anima`
+- Oracle model: `claude-sonnet-4-6` (sessions), `claude-haiku-4-5-20251001` (no sessions)
+
+### Launch: `./launch.command`
+Kills old daemon + app, wipes feeds, clears WebKit cache, restarts everything. One command gets all changes.

@@ -332,9 +332,9 @@ export function handleEvent(id, event) {
           s._hitRateLimit = false;
           s._perfOutTokens = 0;
         }
-        // Emit turn_complete so daemon can fire per-turn commentary (native buddy cadence)
-        // Include turn_text + user_msg so daemon has intent context, not just tool shape.
-        if (s._turnToolCount > 0) {
+        // Always emit turn_complete — daemon uses tool_count to gate commentary,
+        // but needs all turns (including pure-chat) for oracle conversation context.
+        if (s._turnText || s._turnToolCount > 0) {
           appendVexilFeed({
             type:       'turn_complete',
             session_id: id.slice(0, 8),

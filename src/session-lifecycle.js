@@ -8,7 +8,7 @@ import {
   syncOmiSessions, getFamiliarRerollCount,
 } from './session.js';
 import { getBuddyTrigger } from './companion.js';
-import { getStagedAttachments, markAttachmentsSent } from './attachments.js';
+import { getStagedAttachments, markAttachmentsSent, cleanupSession as cleanupAttachments } from './attachments.js';
 import { getSlashCommands, isBuiltinCommand } from './slash-menu.js';
 import { pxLog } from './logger.js';
 
@@ -175,6 +175,7 @@ function killSession(id) {
 
   sessions.delete(id);
   sessionLogs.delete(id);
+  cleanupAttachments(id);
   document.getElementById(`card-${id}`)?.remove();
 
   if (getActiveSessionId() === id) {

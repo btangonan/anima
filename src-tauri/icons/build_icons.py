@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Build macOS .icns + Tauri PNGs from logo.svg with Apple squircle mask."""
+"""
+Build dock icon, .icns, and all Tauri PNGs for pixel-terminal.
+
+Source: ASCII art 'a' from sprites/logos/a.txt rendered in Menlo, orange #db7656, dark #0d0d0d bg.
+Outputs TWO master PNGs — do not conflate them:
+  icon_master_1024.png         flat square  → used for .icns + Tauri bundle (macOS squircles it)
+  icon_master_1024_rounded.png pre-squircle → used by lib.rs include_bytes! → NSDockTile.contentView
+
+After running this script: `touch ../src/lib.rs` then rebuild.
+See CLAUDE.md §"Dock Icon System" for full lifecycle explanation.
+"""
 
 import math
 import os
@@ -124,41 +134,110 @@ def center_content(img: Image.Image, bg_color: tuple = (24, 24, 24)) -> Image.Im
     return centered
 
 
+def render_ascii_art_logo(canvas_size: int) -> Image.Image:
+    """Render the ASCII art 'a' from a.txt in orange on dark background."""
+    from PIL import ImageFont
+
+    lines = [
+        "   __ _ ",
+        "  / _` |",
+        " | (_| |",
+        "  \\__,_|",
+    ]
+
+    font_path = "/System/Library/Fonts/Menlo.ttc"
+    bg_color = (13, 13, 13, 255)
+
+    # Measure at reference size to compute scale
+    ref_size = 100
+    ref_font = ImageFont.truetype(font_path, ref_size)
+    ref_bbox = ref_font.getbbox("M")
+    ref_char_w = ref_bbox[2] - ref_bbox[0]  # ~60px at size 100
+
+    # Scale so the 8-char wide text fills 68% of canvas
+    target_w = canvas_size * 0.62
+    font_size = int(ref_size * target_w / (8 * ref_char_w))
+    font = ImageFont.truetype(font_path, font_size)
+
+    # Advance width (includes inter-char spacing) via getlength — NOT getbbox width.
+    # getbbox returns ink bounds only; getlength returns true layout advance.
+    block_w = int(font.getlength("M" * 8))
+    start_x = (canvas_size - block_w) // 2
+
+    # Line height via font metrics (ascent+descent) + leading.
+    # draw.text(y) places the ink starting at y + bbox_top, so compensate.
+    ascent, descent = font.getmetrics()
+    line_h = ascent + descent + int(font_size * 0.08)
+
+    # Vertical: center the ink block, not the layout block.
+    # Ink top of first line = start_y + bbox[1]; ink bottom of last line = start_y + (n-1)*line_h + bbox[3]
+    sample_bbox = font.getbbox("Mg_|/(\\`")
+    ink_h = (len(lines) - 1) * line_h + (sample_bbox[3] - sample_bbox[1])
+    start_y = (canvas_size - ink_h) // 2 - sample_bbox[1]
+
+    orange = (219, 118, 86, 255)  # #db7656
+    stroke = max(1, font_size // 33)  # slightly lighter than before
+
+    def _render(ox, oy):
+        img = Image.new("RGBA", (canvas_size, canvas_size), bg_color)
+        draw = ImageDraw.Draw(img)
+        for i, line in enumerate(lines):
+            draw.text((ox, oy + i * line_h), line, fill=orange, font=font,
+                      stroke_width=stroke, stroke_fill=orange)
+        return img
+
+    # Pass 1 — render at computed position
+    img = _render(start_x, start_y)
+
+    # Pass 2 — measure actual ink center and correct for ASCII art asymmetry.
+    # The figlet 'a' is right-heavy (3 '|' chars on right, 1 on left),
+    # so layout-centering leaves ink center right of canvas center.
+    # Apply a small extra left nudge to compensate for the visual weight of leading spaces.
+    import numpy as np
+    arr = np.array(img)
+    mask = (arr[:, :, 0] > 150) & (arr[:, :, 1] < 150)
+    if mask.any():
+        ys, xs = np.where(mask)
+        dx = canvas_size // 2 - int((int(xs.min()) + int(xs.max())) // 2) - 25
+        dy = canvas_size // 2 - int((int(ys.min()) + int(ys.max())) // 2)
+        img = _render(start_x + dx, start_y + dy)
+
+    return img
+
+
 def build_icons():
-    svg_path = ICONS_DIR / "logo.svg"
-    if not svg_path.exists():
-        print(f"ERROR: {svg_path} not found")
-        return
-
-    # Render pixel art at 75% of canvas, centered on 1024x1024 background.
-    # macOS Big Sur+ applies a squircle mask that clips ~10% from edges,
-    # so content needs padding to avoid being cut off in Dock/Cmd+Tab.
     canvas_size = 1024
-    content_size = int(canvas_size * 0.80)  # 816px — leaves ~10% padding per side
-    # Round to nearest multiple of 16 so pixel grid stays crisp
-    content_size = (content_size // 16) * 16  # 768
 
-    print(f"Rendering SVG at {content_size}x{content_size} (padded to {canvas_size})...")
-    content = render_svg_to_image(svg_path, content_size)
+    print("Rendering ASCII art logo...")
+    master = render_ascii_art_logo(canvas_size)
 
-    # Center on full canvas with background fill
-    bg_color = (24, 24, 24, 255)  # #181818
-    master = Image.new("RGBA", (canvas_size, canvas_size), bg_color)
-    offset = (canvas_size - content_size) // 2  # 128px padding
-    master.paste(content, (offset, offset), content)
+    # TWO SEPARATE PNG FILES — do not conflate them:
+    #
+    # icon_master_1024.png       — flat square, NO squircle mask.
+    #   Used for: icon.icns, bundle PNGs, Tauri icon table.
+    #   macOS applies the squircle automatically to .app bundle icons in Dock/Finder.
+    #   Baking it here would double-squircle in production.
+    #
+    # icon_master_1024_rounded.png — squircle mask BAKED IN (transparent corners).
+    #   Used by: lib.rs `include_bytes!("../icons/icon_master_1024_rounded.png")`
+    #            → NSApplication.setApplicationIconImage (tauri dev mode).
+    #   setApplicationIconImage bypasses macOS automatic squircle treatment.
+    #   Without baking, the dev-mode dock icon appears as a flat square.
+    #   DO NOT overwrite this with the flat master.
 
-    # Fine-tune centering based on actual content bounds
-    print("Centering content...")
-    master = center_content(master)
-
-    # Do NOT apply squircle mask or border — macOS Big Sur+ applies its own
-    # squircle mask to all app icons in Dock and Cmd+Tab. Baking transparency
-    # into the .icns bypasses the OS treatment (shadow, highlight border).
-    # Full-square icons get the standard macOS squircle automatically.
-
-    # Save master
+    # Save flat master (used for .icns + bundle)
     master.save(ICONS_DIR / "icon_master_1024.png")
     print("Saved icon_master_1024.png")
+
+    # Save rounded master (used by lib.rs programmatic dock icon in dev mode)
+    rounded = master.copy()
+    mask = make_squircle_mask_fast(1024)
+    r, g, b, a = rounded.split()
+    from PIL import ImageChops
+    new_alpha = ImageChops.multiply(a, mask)
+    rounded = Image.merge("RGBA", (r, g, b, new_alpha))
+    rounded.save(ICONS_DIR / "icon_master_1024_rounded.png")
+    print("Saved icon_master_1024_rounded.png (squircle baked for setApplicationIconImage)")
 
     # Generate .iconset directory
     iconset_dir = ICONS_DIR / "icon.iconset"
