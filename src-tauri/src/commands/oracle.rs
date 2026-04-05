@@ -1,43 +1,183 @@
-//! oracle.rs — Companion oracle (direct invoke from voice.js)
+//! oracle.rs — Companion oracle (persistent subprocess)
 //!
-//! Handles the oracle_query Tauri command: builds context from recent session
-//! activity, constructs a prompt, calls claude -p, returns the reply.
+//! Keeps a long-lived `claude` subprocess for oracle queries, paying the ~10s
+//! cold start once at spawn. Subsequent queries take ~1-2s (API round-trip only).
+//! Auto-respawns if the process dies.
 
 use std::collections::HashMap;
-use serde_json::Value;
-use tokio::sync::Semaphore;
 use std::sync::Arc;
+use serde_json::Value;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
+use tokio::sync::{mpsc, Mutex as TokioMutex, Notify};
 
 use super::daemon::{
-    call_claude, expand_home, now_s, load_buddy, load_companion,
-    str_val, coalesce, DaemonShared, ConvoEntry,
+    expand_home, now_s, load_buddy, load_companion,
+    str_val, coalesce, buddy_traits, DaemonShared, ConvoEntry,
 };
+
+// ── Persistent oracle subprocess ─────────────────────────────────────────────
+
+struct OracleProc {
+    stdin:  tokio::process::ChildStdin,
+    rx:     mpsc::Receiver<String>,    // receives stdout lines from reader task
+    _child: Child,                      // held to keep process alive
+}
+
+pub struct OraclePool {
+    proc:   TokioMutex<Option<OracleProc>>,
+    ready:  Notify,
+}
+
+impl OraclePool {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            proc:  TokioMutex::new(None),
+            ready: Notify::new(),
+        })
+    }
+
+    /// Spawn the persistent claude subprocess. Called once from daemon_loop.
+    pub async fn spawn(&self) {
+        if let Some(op) = self.try_spawn().await {
+            *self.proc.lock().await = Some(op);
+            self.ready.notify_waiters();
+            println!("[oracle] persistent subprocess ready");
+        }
+    }
+
+    async fn try_spawn(&self) -> Option<OracleProc> {
+        let claude = which_claude().await?;
+        let mut cmd = Command::new(&claude);
+        cmd.args([
+            "--input-format", "stream-json",
+            "--output-format", "stream-json",
+            "--verbose",
+            "--model", "claude-haiku-4-5-20251001",
+            "--no-session-persistence",
+            "--permission-mode", "default",
+            "--settings", r#"{"hooks":{}}"#,
+            // No --system-prompt here — personality is injected per-query via
+            // build_oracle_system() so it stays current as sessions change.
+        ]);
+        cmd.stdin(std::process::Stdio::piped())
+           .stdout(std::process::Stdio::piped())
+           .stderr(std::process::Stdio::null());
+
+        let mut child = match cmd.spawn() {
+            Ok(c)  => c,
+            Err(e) => { eprintln!("[oracle] spawn error: {e}"); return None; }
+        };
+
+        let stdout = child.stdout.take()?;
+        let stdin  = child.stdin.take()?;
+
+        // Background reader: drains stdout lines into a channel
+        let (tx, rx) = mpsc::channel::<String>(64);
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                let line = line.trim().to_string();
+                if line.is_empty() { continue; }
+                if tx.send(line).await.is_err() { break; }
+            }
+        });
+
+        // Drain init events (system prompts, etc.) — don't block, just clear for 2s
+        let drain_rx_ref = &rx;
+        // We can't drain rx here since we're moving it. The caller will drain on first query.
+
+        Some(OracleProc { stdin, rx, _child: child })
+    }
+
+    /// Send a query and wait for the result. Returns the reply text.
+    pub async fn query(&self, prompt: &str, system_context: &str, timeout_secs: u64) -> Option<String> {
+        let mut guard = self.proc.lock().await;
+
+        // If no process, try to respawn
+        if guard.is_none() {
+            drop(guard);
+            self.spawn().await;
+            guard = self.proc.lock().await;
+        }
+
+        let op = guard.as_mut()?;
+
+        // Build the user message with context baked in
+        let content = if system_context.is_empty() {
+            prompt.to_string()
+        } else {
+            format!("[Context: {system_context}]\n\n{prompt}")
+        };
+
+        let msg = serde_json::json!({
+            "type": "user",
+            "message": { "role": "user", "content": content }
+        });
+        let line = format!("{}\n", msg);
+
+        // Write to stdin
+        if op.stdin.write_all(line.as_bytes()).await.is_err() {
+            eprintln!("[oracle] stdin write failed — process dead, will respawn");
+            *guard = None;
+            return None;
+        }
+        if op.stdin.flush().await.is_err() {
+            *guard = None;
+            return None;
+        }
+
+        // Read until we get a "result" event
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+        loop {
+            match tokio::time::timeout_at(deadline, op.rx.recv()).await {
+                Err(_) => {
+                    eprintln!("[oracle] query timeout ({timeout_secs}s)");
+                    return None;
+                }
+                Ok(None) => {
+                    eprintln!("[oracle] subprocess stdout closed — will respawn");
+                    *guard = None;
+                    return None;
+                }
+                Ok(Some(line)) => {
+                    if let Ok(evt) = serde_json::from_str::<Value>(&line) {
+                        if evt["type"].as_str() == Some("result") {
+                            let result = evt["result"].as_str().unwrap_or("").trim().to_string();
+                            if result.is_empty() || result == "SKIP" { return None; }
+                            return Some(result);
+                        }
+                        // Skip other event types (system, assistant, content_block_*, rate_limit_event)
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn which_claude() -> Option<String> {
+    match Command::new("which").arg("claude").output().await {
+        Ok(o) if o.status.success() => {
+            let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            println!("[oracle] claude at: {path}");
+            Some(path)
+        }
+        _ => { eprintln!("[oracle] WARNING: 'claude' not on PATH"); None }
+    }
+}
 
 // ── Oracle system-prompt builder ──────────────────────────────────────────────
 
 pub(crate) fn build_oracle_system(sessions: &[Value]) -> String {
     let companion = load_companion();
     let buddy     = load_buddy();
-    let name        = coalesce(str_val(&companion, "name"),        str_val(&buddy, "name"),        "Vexil");
-    let personality = coalesce(str_val(&companion, "personality"), str_val(&buddy, "personality"), "");
-
-    // Trait line
-    let species   = str_val(&buddy, "species");
-    let voice     = str_val(&buddy, "voice");
-    let peak_stat = buddy.get("stats").and_then(|s| s.as_object()).and_then(|m| {
-        m.iter().max_by(|a, b| {
-            a.1.as_f64().unwrap_or(0.0).partial_cmp(&b.1.as_f64().unwrap_or(0.0))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }).map(|(k, v)| (k.clone(), v.as_f64().unwrap_or(0.0)))
-    });
-
-    let mut trait_line = String::new();
-    if !species.is_empty()                                     { trait_line.push_str(&format!("Species: {species}.")); }
-    if !voice.is_empty() && voice != "default"                 { trait_line.push_str(&format!(" Voice: {voice}.")); }
-    if let Some((ref stat, val)) = peak_stat { trait_line.push_str(&format!(" Peak trait: {stat} {val}/10.")); }
+    let name = coalesce(str_val(&companion, "name"), str_val(&buddy, "name"), "Vexil");
+    let raw_personality = coalesce(str_val(&companion, "personality"), str_val(&buddy, "personality"), "");
+    let (trait_line, fallback) = buddy_traits(&buddy);
+    let personality = if raw_personality.is_empty() { &fallback } else { raw_personality };
 
     if sessions.is_empty() {
-        let mut ctx = if personality.is_empty() { String::new() } else { format!("{personality}\n\n") };
+        let mut ctx = format!("{personality}\n\n");
         if !trait_line.is_empty() { ctx.push_str(&trait_line); ctx.push('\n'); }
         ctx.push_str(&format!("You are {name}. No sessions open — you're blind right now. Tell the user to press + to open a project folder. One sentence."));
         return ctx;
@@ -47,24 +187,22 @@ pub(crate) fn build_oracle_system(sessions: &[Value]) -> String {
         format!("{} ({})", str_val(s, "name"), str_val(s, "cwd"))
     }).collect();
 
-    let mut ctx = if personality.is_empty() { String::new() } else { format!("{personality}\n\n") };
+    let mut ctx = format!("{personality}\n\n");
     ctx.push_str(&format!("You are {name}, watching Claude Code sessions.\nOpen sessions: {}.\n", sessions_str.join("; ")));
     if !trait_line.is_empty() { ctx.push_str(&trait_line); ctx.push('\n'); }
     ctx.push_str("\nAnswer directly from what you know. Be opinionated and specific. 2 sentences max. Cut to the insight, not the description.");
     ctx
 }
 
-// ── Core oracle call ──────────────────────────────────────────────────────────
+// ── Core oracle call (uses persistent subprocess) ────────────────────────────
 
-/// Shared by oracle_query Tauri command.
-/// Takes pre-snapshotted activity/convo state so lock is not held during I/O.
 pub(crate) async fn run_oracle(
     message:  String,
     history:  Vec<Value>,
     sessions: Vec<Value>,
     ra_snap:  HashMap<String, Vec<(f64, String, String)>>,
     cv_snap:  HashMap<String, Vec<ConvoEntry>>,
-    sem:      &Arc<Semaphore>,
+    oracle:   &Arc<OraclePool>,
 ) -> Option<String> {
     let now = now_s();
 
@@ -97,27 +235,31 @@ pub(crate) async fn run_oracle(
     let buddy     = load_buddy();
     let name = coalesce(str_val(&companion, "name"), str_val(&buddy, "name"), "Vexil");
 
-    let mut system = build_oracle_system(&sessions);
-    if !activity_lines.is_empty() { system.push_str(&format!("\nRecent tool activity:\n{}\n", activity_lines.join("\n"))); }
-    if !convo_lines.is_empty()    { system.push_str(&format!("Recent session conversation:\n{}\n", convo_lines.join("\n"))); }
+    // Build context string (injected per-query since system prompt is fixed at spawn)
+    let mut ctx = build_oracle_system(&sessions);
+    if !activity_lines.is_empty() { ctx.push_str(&format!("\nRecent tool activity:\n{}\n", activity_lines.join("\n"))); }
+    if !convo_lines.is_empty()    { ctx.push_str(&format!("Recent session conversation:\n{}\n", convo_lines.join("\n"))); }
 
-    let mut lines = vec![system, String::new(), "--- Conversation ---".to_string()];
+    // Build conversation with history
+    let mut history_str = String::new();
     for turn in &history {
         let role = if turn["role"].as_str() == Some("user") { "USER" } else { &name.to_uppercase() };
-        lines.push(format!("{role}: {}", turn["content"].as_str().unwrap_or("")));
+        history_str.push_str(&format!("{role}: {}\n", turn["content"].as_str().unwrap_or("")));
     }
-    lines.push(format!("USER: {message}"));
-    lines.push(format!("{}:", name.to_uppercase()));
-    let full_prompt = lines.join("\n");
 
-    let (model, timeout) = if sessions.is_empty() { ("claude-haiku-4-5-20251001", 12) } else { ("claude-sonnet-4-6", 30) };
-    call_claude(full_prompt, model, &["--bare"], timeout, sem).await
+    let prompt = if history_str.is_empty() {
+        message
+    } else {
+        format!("{history_str}USER: {message}")
+    };
+
+    oracle.query(&prompt, &ctx, 15).await
 }
 
-// ── Startup check ─────────────────────────────────────────────────────────────
+// ── Startup check (kept for daemon commentary path) ──────────────────────────
 
 pub(crate) async fn check_claude_path() -> bool {
-    match tokio::process::Command::new("which").arg("claude").output().await {
+    match Command::new("which").arg("claude").output().await {
         Ok(o) if o.status.success() => {
             println!("[daemon] claude at: {}", String::from_utf8_lossy(&o.stdout).trim());
             true
@@ -149,9 +291,9 @@ pub async fn oracle_query(
         (ra, cv)
     };
 
-    let reply = run_oracle(message, history, sessions, ra_snap, cv_snap, &state.sem).await
+    let reply = run_oracle(message, history, sessions, ra_snap, cv_snap, &state.oracle).await
         .ok_or_else(|| "oracle unreachable".to_string())?;
 
-    println!("[daemon] oracle_query → \"{}\"", &reply[..reply.len().min(80)]);
+    println!("[oracle] query → \"{}\"", &reply[..reply.len().min(80)]);
     Ok(serde_json::json!({"msg": reply, "req_id": req_id}))
 }

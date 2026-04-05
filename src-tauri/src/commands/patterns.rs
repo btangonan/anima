@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use super::daemon::{
     call_claude, append_out, reporting_mode, now_s,
-    load_buddy, load_companion, str_val, coalesce,
+    load_buddy, load_companion, str_val, coalesce, buddy_traits,
     DaemonShared, DaemonState, ToolEntry,
 };
 
@@ -62,14 +62,21 @@ fn is_internal(msg: &str) -> bool {
 pub(crate) fn build_persona(recent_actions: &VecDeque<String>) -> String {
     let companion = load_companion();
     let buddy     = load_buddy();
-    let name        = coalesce(str_val(&companion, "name"),        str_val(&buddy, "name"),        "Vexil");
-    let personality = coalesce(str_val(&companion, "personality"), str_val(&buddy, "personality"), "");
+    let name = coalesce(str_val(&companion, "name"), str_val(&buddy, "name"), "Vexil");
+    let raw_personality = coalesce(str_val(&companion, "personality"), str_val(&buddy, "personality"), "");
+    let (trait_line, fallback) = buddy_traits(&buddy);
+    let personality = if raw_personality.is_empty() { &fallback } else { raw_personality };
+
     let mut p = format!(
-        "{personality}\n\nYou watch across multiple Claude Code sessions and occasionally drop one line \
+        "{personality}\n\n"
+    );
+    if !trait_line.is_empty() { p.push_str(&trait_line); p.push('\n'); }
+    p.push_str(&format!(
+        "You watch across multiple Claude Code sessions and occasionally drop one line \
         in a speech bubble. You're not {name} — you're writing its line.\n\
         One physical action in asterisks, specific to this moment — never repeat the same action twice in a row.\n\
         Under 20 words total. Say what's wrong, not what's happening. No preamble."
-    );
+    ));
     if !recent_actions.is_empty() {
         let list: Vec<&str> = recent_actions.iter().map(|s| s.as_str()).collect();
         p.push_str(&format!("\nDo NOT use these recent actions: {}.", list.join(", ")));

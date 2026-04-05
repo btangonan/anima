@@ -12,7 +12,7 @@
  * species not yet drawn as pixel art).
  */
 
-import { SPRITE_DATA, getActiveSessionId, sessions } from './session.js';
+import { SPRITE_DATA, getActiveSessionId } from './session.js';
 import { SPRITES, EYE_CHARS, DEFAULT_EYE, HATS, renderFrame } from './ascii-sprites.js';
 
 const { invoke } = window.__TAURI__.core;
@@ -21,13 +21,9 @@ const { invoke } = window.__TAURI__.core;
 
 const LINT_PATH    = '/tmp/vexil_lint.json';
 const APPROVAL_PATH = '/tmp/vexil_approval.json';
-// Legacy hook gate paths (pixel_gate.py — power-user hooks)
+// Hook gate paths (pixel_gate.py — power-user hooks)
 const HOOK_GATE_PATH      = '/tmp/pixel_hook_gate.json';
 const HOOK_GATE_RESP_PATH = '/tmp/pixel_hook_gate_response.json';
-// Session-scoped MCP gate paths (anima_gate.py — native approval)
-const ANIMA_GATE_PREFIX      = '/tmp/anima_gate_';
-const ANIMA_GATE_SUFFIX      = '.json';
-const ANIMA_GATE_RESP_SUFFIX = '_response.json';
 
 const POLL_INTERVAL = 3000;   // ms
 
@@ -78,7 +74,6 @@ let _lastOpsKey   = '';       // prevent re-showing same ops report
 let _approvalPending = false;
 let _hookGatePending = false;
 let _hookGateReqId   = null;
-let _hookGateSessionId = null;  // tracks which session's MCP gate is pending
 let _pollActive = false;
 let _masterOutOffset = 0;  // line count consumed from vexil_master_out.jsonl
 
@@ -258,21 +253,12 @@ function hideApprovalDialog() {
 async function writeApproval(approved) {
   try {
     if (_hookGatePending) {
+      // Hook gate response (pixel_gate.py is polling this)
       const payload = JSON.stringify({ id: _hookGateReqId, approved });
-      if (_hookGateSessionId) {
-        // MCP gate response (anima_gate.py is polling this)
-        const respPath = ANIMA_GATE_PREFIX + _hookGateSessionId + ANIMA_GATE_RESP_SUFFIX;
-        const gatePath = ANIMA_GATE_PREFIX + _hookGateSessionId + ANIMA_GATE_SUFFIX;
-        await invoke('write_file_as_text', { path: respPath, content: payload });
-        await invoke('write_file_as_text', { path: gatePath, content: '{}' }).catch(() => {});
-      } else {
-        // Legacy hook gate response (pixel_gate.py is polling this)
-        await invoke('write_file_as_text', { path: HOOK_GATE_RESP_PATH, content: payload });
-        await invoke('write_file_as_text', { path: HOOK_GATE_PATH, content: '{}' }).catch(() => {});
-      }
+      await invoke('write_file_as_text', { path: HOOK_GATE_RESP_PATH, content: payload });
+      await invoke('write_file_as_text', { path: HOOK_GATE_PATH, content: '{}' }).catch(() => {});
       _hookGatePending = false;
       _hookGateReqId   = null;
-      _hookGateSessionId = null;
     } else {
       // Route to Vexil approval file (memory_lint.py is polling this)
       const payload = JSON.stringify({ approved });
@@ -289,36 +275,11 @@ async function writeApproval(approved) {
 }
 
 // ── Hook gate poller ──────────────────────────────────────────────────────────
-// Polls two sources for permission gate requests:
-// 1. Session-scoped MCP gate files: /tmp/anima_gate_{sessionId}.json (anima_gate.py)
-// 2. Legacy global gate file: /tmp/pixel_hook_gate.json (pixel_gate.py hooks)
+// Polls /tmp/pixel_hook_gate.json for permission gate requests (pixel_gate.py hooks)
 
 async function pollHookGate() {
-  if (_hookGatePending) return;  // already showing gate bubble — wait for user
+  if (_hookGatePending) return;
 
-  // Poll MCP gate files for all active sessions
-  if (sessions?.size) {
-    for (const [sessionId] of sessions) {
-      const gatePath = ANIMA_GATE_PREFIX + sessionId + ANIMA_GATE_SUFFIX;
-      try {
-        const raw = await invoke('read_file_as_text', { path: gatePath });
-        const gate = JSON.parse(raw);
-        if (!gate?.id || !gate?.msg) continue;
-        if (Date.now() / 1000 > gate.expires) continue;
-
-        _hookGatePending = true;
-        _hookGateReqId   = gate.id;
-        _hookGateSessionId = sessionId;
-        invoke('js_log', { msg: `[mcp-gate] ${gate.msg?.slice(0, 80)}` }).catch(() => {});
-        showApprovalDialog(gate.msg);
-        return;
-      } catch {
-        // file missing or partial write — skip
-      }
-    }
-  }
-
-  // Fallback: legacy global gate file (pixel_gate.py hooks)
   let raw;
   try {
     raw = await invoke('read_file_as_text', { path: HOOK_GATE_PATH });
@@ -336,7 +297,6 @@ async function pollHookGate() {
 
   _hookGatePending = true;
   _hookGateReqId   = gate.id;
-  _hookGateSessionId = null;  // legacy — no session scope
   invoke('js_log', { msg: `[hook-gate] ${gate.msg?.slice(0, 80)}` }).catch(() => {});
   showApprovalDialog(gate.msg);
 }

@@ -16,35 +16,6 @@ const { Command } = window.__TAURI__.shell;
 const { open: openDialog } = window.__TAURI__.dialog;
 const { invoke } = window.__TAURI__.core;
 
-// ── MCP permission gate ──────────────────────────────────────
-// Resolve path to anima_gate.py and write MCP config on first spawn.
-let _mcpConfigPath = null;
-
-async function ensureMcpConfig() {
-  if (_mcpConfigPath) return _mcpConfigPath;
-  // In dev, anima_gate.py is at src-tauri/mcp/ relative to the app.
-  // Use Tauri's resource resolver when available; fall back to __dirname-style lookup.
-  const home = await window.__TAURI__.path.homeDir();
-  // The app source is always at this known path (checked at build time).
-  const gatePath = `${home}Projects/pixel-terminal/src-tauri/mcp/anima_gate.py`;
-  const config = {
-    mcpServers: {
-      anima: {
-        type: 'stdio',
-        command: 'python3',
-        args: [gatePath],
-      },
-    },
-  };
-  const tmpPath = '/tmp/anima_mcp_config.json';
-  await invoke('write_file_as_text', {
-    path: tmpPath,
-    content: JSON.stringify(config),
-  });
-  _mcpConfigPath = tmpPath;
-  return _mcpConfigPath;
-}
-
 // Forward declarations — set by app.js bootstrap to break circular deps
 let _deps = {
   renderSessionCard: null,
@@ -116,15 +87,14 @@ async function spawnClaude(id) {
   if (!s) return;
   pxLog('SPAWN', `id:${id.slice(0,8)} cwd:${s.cwd} model:${s._modelOverride||'default'} effort:${s._effortOverride||'default'} continue:${!!s._interrupted}`);
   try {
-    const mcpConfig = await ensureMcpConfig();
+    // v0.1: bypassPermissions — no MCP gate needed, works on any machine.
+    // v0.2 TODO: add MCP permission gate (anima_gate.py) with Tauri resource bundling.
     const claudeArgs = [
       '-p',
       '--input-format',  'stream-json',
       '--output-format', 'stream-json',
       '--verbose',
-      '--permission-mode', 'default',
-      '--permission-prompt-tool', 'mcp__anima__approve',
-      '--mcp-config', mcpConfig,
+      '--permission-mode', 'bypassPermissions',
     ];
     if (s._interrupted) { claudeArgs.push('--continue'); s._interrupted = false; }
     if (s.readOnly) claudeArgs.push('--disallowed-tools', 'Edit,Write,MultiEdit,NotebookEdit,Bash');

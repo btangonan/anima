@@ -64,6 +64,7 @@ pub struct DaemonShared {
     pub state:           Arc<Mutex<DaemonState>>,
     pub sem:             Arc<Semaphore>,
     pub commentary_busy: Arc<AtomicBool>,
+    pub oracle:          Arc<super::oracle::OraclePool>,
 }
 
 impl DaemonShared {
@@ -78,6 +79,7 @@ impl DaemonShared {
             state:           Arc::new(Mutex::new(initial)),
             sem:             Arc::new(Semaphore::new(2)),
             commentary_busy: Arc::new(AtomicBool::new(false)),
+            oracle:          super::oracle::OraclePool::new(),
         })
     }
 }
@@ -127,6 +129,36 @@ pub(crate) fn str_val<'a>(v: &'a Value, key: &str) -> &'a str {
 
 pub(crate) fn coalesce<'a>(a: &'a str, b: &'a str, default: &'a str) -> &'a str {
     if !a.is_empty() { a } else if !b.is_empty() { b } else { default }
+}
+
+/// Extract trait line + fallback personality from buddy.json fields.
+/// Both build_persona() (proactive) and build_oracle_system() (direct) use this
+/// so every companion path gets the same character flavor.
+pub(crate) fn buddy_traits(buddy: &Value) -> (String, String) {
+    let species = str_val(buddy, "species");
+    let voice   = str_val(buddy, "voice");
+    let peak    = buddy.get("stats").and_then(|s| s.as_object()).and_then(|m| {
+        m.iter().max_by(|a, b| {
+            a.1.as_f64().unwrap_or(0.0).partial_cmp(&b.1.as_f64().unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }).map(|(k, v)| (k.clone(), v.as_f64().unwrap_or(0.0)))
+    });
+
+    let mut trait_line = String::new();
+    if !species.is_empty()                     { trait_line.push_str(&format!("Species: {species}.")); }
+    if !voice.is_empty() && voice != "default" { trait_line.push_str(&format!(" Voice: {voice}.")); }
+    if let Some((ref stat, val)) = peak        { trait_line.push_str(&format!(" Peak trait: {stat} {val}/10.")); }
+
+    // Fallback personality for users who never ran /buddy in Claude Code
+    let voice_adj = if !voice.is_empty() && voice != "default" { voice } else { "sharp" };
+    let species_w = if !species.is_empty() { species } else { "companion" };
+    let mut fallback = format!("A {voice_adj} {species_w}");
+    if let Some((ref stat, val)) = peak {
+        fallback.push_str(&format!(" with high {stat} ({val}/10)"));
+    }
+    fallback.push_str(". Cuts to what's wrong, not what's happening. Opinionated and specific.");
+
+    (trait_line, fallback)
 }
 
 // ── I/O ───────────────────────────────────────────────────────────────────────
@@ -237,6 +269,11 @@ pub async fn daemon_loop(shared: Arc<DaemonShared>) {
     println!("[daemon] started — watching {feed_path}");
 
     let claude_ok = check_claude_path().await;
+
+    // Spawn persistent oracle subprocess (cold start ~10s, then ~1-2s per query)
+    if claude_ok {
+        shared.oracle.spawn().await;
+    }
 
     loop {
         sleep(Duration::from_millis(POLL_MS)).await;
