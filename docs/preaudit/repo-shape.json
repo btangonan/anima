@@ -1,21 +1,36 @@
 {
   "type": "single-repo",
-  "product_name": "Pixel Claude",
-  "identifier": "com.bradleytangonan.pixel-terminal",
+  "product_name": "Anima",
+  "bundle_id": "com.bradleytangonan.anima",
   "version": "0.1.0",
-  "framework": "Tauri v2 (macOS desktop app)",
   "languages": {
-    "frontend": "Vanilla JS (ES modules, no bundler, no framework)",
-    "backend": "Rust (Tauri 2, Tokio async runtime)",
-    "scripts": "Python 3, Node.js"
+    "rust": { "files": 12, "loc": 2355 },
+    "javascript_esm": { "files": 18, "loc": 5388 },
+    "css": { "files": 6, "loc": 4454 },
+    "python": { "files": 3, "loc": 30 }
   },
-  "infra": {
-    "ws_bridge": "127.0.0.1:9876 (local voice/Omi WebSocket)",
-    "shell_spawn": ["/opt/homebrew/bin/claude", "/bin/sh", "/opt/homebrew/bin/python3"],
-    "storage": "localStorage (browser), ~/.claude/projects/ JSONL files (read), /tmp/vexil_feed.jsonl (write)"
+  "frameworks": {
+    "desktop": "Tauri v2",
+    "async_runtime": "Tokio v1",
+    "test_js": "Vitest v3",
+    "websocket": "tokio-tungstenite v0.24",
+    "markdown": "marked v17"
   },
-  "bundler": null,
-  "test_framework": null,
-  "ci": null,
-  "source_files_approx": 50
+  "infrastructure": {
+    "ipc": "Tauri invoke (23 commands)",
+    "daemon": "Rust background thread via tokio::spawn (DaemonShared)",
+    "oracle": "claude CLI subprocess via tauri-plugin-shell",
+    "ws_bridge": "WebSocket server (ws_bridge.rs) for Omi voice integration",
+    "persistence": ["localStorage (nim, session state)", "~/.local/share/pixel-terminal/*.jsonl", "~/.config/pixel-terminal/buddy.json"]
+  },
+  "ci": {
+    "platform": "GitHub Actions",
+    "jobs": ["test-js (Vitest, ubuntu-latest)", "test-rust (cargo test, ubuntu-latest)"],
+    "triggers": ["push:main", "pull_request:main"]
+  },
+  "security": {
+    "csp": "set (script-src includes unsafe-inline)",
+    "path_allowlist": "strict allowlist in file_io.rs expand_and_validate_path()",
+    "content_sanitization": "DOMPurify + esc() in dom.js"
+  }
 }

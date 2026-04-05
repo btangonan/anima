@@ -2722,7 +2722,6 @@ version = "0.1.0"
 dependencies = [
  "cocoa",
  "futures-util",
- "libc",
  "objc",
  "serde",
  "serde_json",

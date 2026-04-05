@@ -53,7 +53,28 @@ pub(crate) fn expand_and_validate_path(path: &str) -> Result<std::path::PathBuf,
         return Err(format!("Path outside allowed prefixes: {}", path));
     }
 
-    Ok(std::path::PathBuf::from(expanded))
+    // Canonicalize to resolve symlinks — prevents traversal via a symlink inside an
+    // allowed directory that points outside it (e.g. ~/Projects/evil -> ~/.ssh/id_rsa).
+    // Only runs when the path already exists; new files (writes) are covered by the
+    // string allowlist above.
+    // Note: on macOS /tmp is a symlink to /private/tmp, so we canonicalize /tmp itself
+    // before comparing to handle that transparently.
+    let pb = std::path::PathBuf::from(&expanded);
+    if pb.exists() {
+        let canonical = std::fs::canonicalize(&pb)
+            .map_err(|e| format!("canonicalize failed: {e}"))?;
+        let canon_tmp = std::fs::canonicalize("/tmp")
+            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+        let canon_ok = allowed_dirs.iter().any(|d| canonical.starts_with(d.as_str()))
+            || allowed_exact.iter().any(|e| canonical == std::path::Path::new(e.as_str()))
+            || canonical.starts_with(&canon_tmp);
+        if !canon_ok {
+            return Err(format!("Path resolves outside allowed prefixes: {}", path));
+        }
+        return Ok(canonical);
+    }
+
+    Ok(pb)
 }
 
 fn encode_base64(input: &[u8]) -> String {

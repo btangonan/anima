@@ -1,137 +1,84 @@
-# PRE_AUDIT_SUMMARY — Pixel Terminal
-**Date**: 2026-04-04 | **Branch**: feat/familiar-card-phase2 | **Auditor**: Claude Sonnet 4.6 + Gemini Adversarial
+# PRE_AUDIT_SUMMARY — Anima (pixel-terminal)
+**Date**: 2026-04-05 | **Auditor**: Claude Sonnet 4.6 + Gemini 3.1 Pro adversarial (Stage 9 complete)
 
 ---
 
 ## Repo Shape
-Single-repo Tauri v2 desktop app (macOS). Vanilla JS frontend (no framework, no bundler),
-Rust backend, Python daemon. ~25 source files excluding build artifacts and sprites.
+- **Type**: Single repo — Tauri v2 desktop app (macOS)
+- **Languages**: Rust 2355 LOC · JS/ESM 5388 LOC · CSS 4454 LOC · Python 30 LOC
+- **IPC surface**: 23 Tauri commands across 5 modules
+- **Infrastructure**: JSONL daemon feed · claude CLI subprocess · WebSocket bridge (Omi) · localStorage
 
 ---
 
-## Stage 8: Maturity Scores (Post-Adversarial)
+## Maturity Scores (Stage 8 + Stage 9 revisions)
 
-| Dimension | Score | /3 | Notes |
-|-----------|-------|----|-------|
-| LOC Discipline | 0 | ░░░ | 12/25 files >300 LOC, styles.css 1967 LOC |
-| Validation Coverage | 0 | ░░░ | Zero input validation on Tauri IPC commands |
-| Secrets Hygiene | 2 | ██░ | No secrets; CSP=null; no lint enforcement |
-| State & Persistence | 1 | █░░ | In-memory sessions + localStorage + active attachment leak |
-| Errors/Retry/Idempotency | 1 | █░░ | Rust Result good; JS has 10+ silent catch blocks |
-| Testing/CI | 0 | ░░░ | No framework, no CI |
-| **TOTAL** | **4/18** | **22%** | Early/Prototype Stage |
+| Dimension | Score | Notes |
+|---|---|---|
+| LOC Discipline | **1/3** | 11 files >300 LOC; daemon.rs=782, companion.js=683 |
+| Validation Coverage | **1/3** ⬇️ *revised* | Path allowlist bypassable via symlinks; register_child_pid self-defeats SpawnedPids |
+| Secrets Hygiene | **2/3** | No hardcoded secrets; env-based; no secret manager or CI scan |
+| State & Persistence | **1/3** | localStorage + JSONL; in-memory daemon state lost on restart; no idempotency |
+| Errors/Retry/Idempotency | **2/3** | Result<T,String>; 3 mutex unwrap()s; no retry/backoff |
+| Testing/CI | **2/3** | 28 tests, 2-job CI; ~10% JS coverage of critical modules; no coverage gate |
 
----
-
-## Stage 9: Adversarial Cross-Model Review
-
-### Contested Findings (DISAGREEs)
-
-**⚠ CONTESTED — Validation Coverage 0/3**
-Gemini argued DOMPurify use on message stream contradicts 0%. **Claude rebuts**: DOMPurify
-sanitizes HTML output from LLM content. The 0% validation claim is specifically about
-Tauri IPC command *inputs* (path, pid, signal parameters on the Rust side). These are
-different layers. **Score 0 stands.**
-
-**✓ CONCEDED — cards.js innerHTML: HIGH → CRITICAL**
-Gemini correctly identified that `f.name`/`f.species` are interpolated into `dialog.innerHTML`
-(cards.js:225) without DOMPurify. Both fields originate from `.claude.json`/`buddy.json` —
-user-controlled / potentially network-sourced files. In a CSP=null webview with unrestricted
-IPC (read_file, send_signal), this is a full XSS→RCE chain. **Upgraded to CRITICAL.**
-
-**✓ CONCEDED — State 1/3: attachment leak makes it worse**
-Gemini found the attachments.js Map leak is an active memory degradation, not just crash-loss.
-Score stays 1 (no change to criteria), but the leak is promoted to a named risk.
-
-**✓ CONCEDED — LOC in top-5 risks: Gemini CRITICAL findings should displace it**
-/tmp symlink attack and thread safety race in vexil_master.py are more severe than LOC count.
-LOC concerns remain in hotspots.md but no longer occupy a top-5 risk slot.
-
-### Gemini CRITICAL findings confirmed (high confidence)
-
-| # | Finding | File | Severity |
-|---|---------|------|----------|
-| G1 | /tmp/vexil_feed.jsonl symlink attack — daemon appends to world-writable path | scripts/vexil_master.py | CRITICAL |
-| G2 | Thread safety race — dict iterated by oracle worker while main loop modifies | scripts/vexil_master.py | CRITICAL |
-
-### Gemini WARNING findings (medium confidence)
-- `attachments.js` Map never cleaned up on session destroy — memory leak over long sessions
-- `app.js` setInterval 400ms runs even when app hidden — CPU waste
+**Total: 9/18 — DEVELOPING** *(revised down from 10/18 after Gemini adversarial)*
 
 ---
 
-## Final Top 5 Risks (Post-Adversarial)
+## Top Risks (merged Claude + Gemini findings)
 
-### 🔴 CRITICAL 1 — send_signal: Arbitrary Process Kill
-**File**: `src-tauri/src/lib.rs:488`
-`send_signal(pid: u32, signal: i32)` — any JS in the webview can send any UNIX signal
-to any PID on the system. No allowlist, no pid range check, no signal allowlist.
-**Fix**: Restrict to child PIDs the app spawned (store in Tauri State). Never accept arbitrary pid.
+### RISK-1 🔴 CRITICAL — `register_child_pid` Defeats Its Own Security *(Gemini-new)*
+`misc.rs:125-127`: `register_child_pid` and `unregister_child_pid` are `#[tauri::command]` — directly callable from JS. Any XSS in the WebView (e.g., from Claude-generated malicious content) can register an arbitrary PID and then kill it via `send_signal`. The SpawnedPids mechanism is self-defeating.
+**Fix**: Remove `#[tauri::command]` from both. Track PIDs on the Rust side when spawning — never trust the frontend for this.
 
-### 🔴 CRITICAL 2 — Unrestricted File Read/Write IPC
-**Files**: `src-tauri/src/lib.rs:32,39,45,54`
-`read_file_as_text(path)`, `write_file_as_text(path, content)`, etc. — no path sandboxing.
-Webview JS can read `~/.ssh/id_rsa`, `~/.claude.json`, write to any directory.
-**Fix**: Enforce path prefix allowlist (e.g., `~/Projects/`, `~/.config/pixel-terminal/`).
+### RISK-2 🔴 CRITICAL — Symlink Traversal Bypass in Path Allowlist *(Gemini-new)*
+`file_io.rs:48`: `expand_and_validate_path()` uses `starts_with()` string prefix check. A symlink inside `~/Projects/` pointing to `~/.ssh/id_rsa` passes the check but returns sensitive content.
+**Fix**: `std::fs::canonicalize(&expanded)` before the prefix check. All 15 existing path tests should still pass (valid paths canonicalize to themselves).
 
-### 🔴 CRITICAL 3 — cards.js XSS → RCE via unsanitized innerHTML *(Gemini escalated)*
-**File**: `src/cards.js:225`, `src-tauri/tauri.conf.json` (csp: null)
-`dialog.innerHTML` interpolates `f.name` / `f.species` without DOMPurify. These fields
-come from `.claude.json` / `buddy.json`. CSP=null + unrestricted IPC = XSS becomes RCE.
-**Fix**: Use `document.createElement` + `textContent` OR escape all interpolations. Set CSP.
+### RISK-3 🔴 LOC Explosion + Untested Critical Paths *(Claude)*
+`daemon.rs` (782), `companion.js` (683), `session-lifecycle.js` (492), `events.js` (418), `app.js` (413) — all >300 LOC AND completely untested. Bugs here go undetected until user impact.
 
-### 🔴 CRITICAL 4 — /tmp symlink attack in vexil daemon *(Gemini — high confidence)*
-**File**: `scripts/vexil_master.py`, `scripts/start_vexil_daemon.py`
-Daemon uses `/tmp/vexil_feed.jsonl` and `/tmp/vexil_master.log` — world-writable paths.
-A symlink at either path redirects daemon writes to arbitrary files (e.g., `~/.ssh/authorized_keys`).
-**Fix**: Move runtime files to `~/.local/share/pixel-terminal/` or `$TMPDIR/<uuid>/`.
+### RISK-4 🟡 In-Memory DaemonState Lost on Restart *(Claude)*
+`DaemonShared` (recent_activity, tool_sequences, session_convo) lives in `Arc<Mutex<>>` only. App crash or restart silently wipes oracle context. No recovery path.
 
-### 🔴 CRITICAL 5 — Thread safety race in vexil daemon *(Gemini — high confidence)*
-**File**: `scripts/vexil_master.py` (main loop + oracle worker thread)
-`recent_activity` dict is modified by main loop and iterated by oracle worker without a lock.
-`RuntimeError: dictionary changed size during iteration` will crash the daemon.
-**Fix**: Use `threading.Lock()` or snapshot with `list(recent_activity.items())`.
+### RISK-5 🟡 CSS Monolith Partially Split — Root File Still Active *(Claude)*
+`src/styles.css` (1967 LOC) still loaded alongside `src/styles/*.css`. Split is incomplete — cascade ambiguity and dead-rule risk.
+
+### RISK-6 🟡 `unsafe-inline` in CSP *(Claude)*
+`tauri.conf.json` `script-src 'self' 'unsafe-inline'` — inline script execution allowed, degrading CSP to near-useless for XSS mitigation.
+
+### RISK-7 🟡 3 Remaining `unwrap()` on Mutex Locks *(Claude)*
+`misc.rs:127,133,146` — mutex lock unwrap()s in production code. If a thread panics while holding the lock, subsequent calls panic-propagate.
+
+### RISK-8 🟡 TOCTOU PID Reuse *(Gemini)*
+`send_signal` acts on raw PIDs. If a child exits and OS recycles the PID, a delayed signal could hit an unrelated process.
+**Fix**: Manage `Child` handles in Rust, not raw PIDs.
 
 ---
 
 ## Top 3 Strengths
 
-1. **DOMPurify + marked.js on message stream** — `dom.js:8` sanitizes all LLM output before injection.
-2. **Rust Result<T,String> propagation** — All Tauri commands return typed results to JS.
-3. **WebSocket bound to 127.0.0.1** — Voice bridge inaccessible from external network.
+1. **ws_bridge.rs cancellation** — `write_task.abort()` + `await` correctly drives the task to completion before dropping the receiver. Rare to see this done right.
+2. **Content sanitization pipeline** — DOMPurify for markdown + `esc()` for user-controlled strings. No raw innerHTML of untrusted content detected.
+3. **CI gates both runtimes** — Vitest + cargo test on every push/PR. All 28 tests passing.
 
 ---
 
-## 2-PR Minimum Fix Plan
+## 2-PR Minimum Fix Plan (updated with Gemini findings)
 
-### PR 1 — Security Hardening (URGENT)
-**Acceptance criteria**: No arbitrary pid/path/signal from webview. No /tmp symlink risk. Daemon thread-safe.
-- `src-tauri/src/lib.rs`: Add path prefix allowlist to all file IPC commands
-- `src-tauri/src/lib.rs`: Restrict `send_signal` to managed child PIDs (Tauri State)
-- `src-tauri/tauri.conf.json`: Set minimal CSP (`default-src 'self'`)
-- `src/cards.js:225`: Replace `dialog.innerHTML` with safe DOM construction
-- `scripts/vexil_master.py`: Move /tmp paths → `~/.local/share/pixel-terminal/`
-- `scripts/vexil_master.py`: Add `threading.Lock` around `recent_activity` access
-- Files: `lib.rs`, `tauri.conf.json`, `cards.js`, `vexil_master.py`
+### PR-G: Security Fixes — PID Registration + Path Canonicalize + Mutex Unwraps
+**Scope**: `misc.rs` (remove IPC from register/unregister_child_pid, migrate to Rust-side registration), `file_io.rs` (add canonicalize before prefix check), `misc.rs:127,133,146` (unwrap → unwrap_or_else).
+**Acceptance**: All existing 15 path tests pass. register_child_pid no longer in invoke_handler. Build clean.
 
-### PR 2 — LOC + Cleanup (After Security)
-**Acceptance criteria**: styles.css split, lib.rs split, attachment leak fixed.
-- Split `src/styles.css` → `base.css`, `cards.css`, `companion.css`, `history.css`, `voice.css`
-- Split `src-tauri/src/lib.rs` → `commands/file_io.rs`, `commands/history.rs`, `commands/misc.rs`
-- `src/attachments.js`: Add `cleanupSession(id)` export + call on session destroy
-- Files: new CSS/RS modules + `attachments.js`
+### PR-H: Split daemon.rs (782 → <300 LOC)
+**Scope**: Extract `oracle.rs` (call_claude, run_oracle, oracle_query) + `patterns.rs` (check_tool_patterns, commentary_worker) from daemon.rs.
+**Acceptance**: daemon.rs <300 LOC. All 10 daemon_patterns tests pass. CI green.
 
 ---
 
-## Artifacts
-- `repo-shape.json` — repo type, languages, infra
-- `file-inventory.json` — all files with LOC
-- `hotspots.md` — top files by LOC
-- `frameworks.json` — IPC surface, shell spawns
-- `api-validation.json` — validation coverage analysis
-- `secrets-findings.json` — secret scan results
-- `state-map.md` — persistence architecture
-- `error-surface.md` — error handling analysis
-- `test-landscape.md` — test coverage
-- `ci-signals.json` — CI/CD analysis
-- `maturity.json` — maturity scores (0-3)
+## Stage 9 — Gemini Adversarial Review Summary
+- **Pass 1 (blind)**: 2 CRITICALs (register_child_pid, symlink traversal), 1 WARNING (TOCTOU), 1 NOTE (ObjC leak)
+- **Pass 2 (adversarial)**: DISAGREE on Validation Coverage 2/3 → 1/3 (upheld after rebuttal)
+- **Claude rebuttal**: Conceded — both bypass mechanisms confirmed by code inspection
+- **Net delta**: Validation Coverage revised from 2→1, total 10→9/18. 2 new CRITICALs added to risk list.

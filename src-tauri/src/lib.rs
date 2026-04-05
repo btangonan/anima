@@ -1,5 +1,3 @@
-extern crate libc;
-
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     Emitter, Manager,
@@ -14,13 +12,11 @@ use commands::history::{load_session_history, scan_session_history};
 use commands::companion::sync_buddy;
 use commands::daemon::{start_daemon, DaemonShared};
 use commands::oracle::oracle_query;
-use commands::misc::{js_log, read_slash_command_content, read_slash_commands, register_child_pid, send_signal, unregister_child_pid};
-use commands::misc::SpawnedPids;
+use commands::misc::{js_log, read_slash_command_content, read_slash_commands};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(SpawnedPids::new())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -90,9 +86,6 @@ pub fn run() {
             get_voice_status,
             scan_session_history,
             load_session_history,
-            register_child_pid,
-            unregister_child_pid,
-            send_signal,
             js_log,
             write_file_as_text,
             append_line_to_file,
