@@ -2,14 +2,13 @@
 ## Updated: 2026-04-04
 
 ### Active Work
-- PR #2 open (`refactor/rust-daemon-port`, `f9d2298`) — awaiting smoke test then merge to main
-- PR B next: `sync_buddy` Tauri command (port sync_real_buddy.ts to Rust) + 1000 test vectors
+- **PR B in progress**: `feat/sync-buddy-rust` — port `sync_real_buddy.ts` to Rust `sync_buddy` Tauri command
 - PR C queued: daemon→Rust (event routing + oracle via invoke, ~1-2 weeks)
 - Launch prep blocked on PR B+C completion
 
 ### Key IDs / Paths
-- `main` = `57c9f8f` (Anima v0.1 squash, 2026-04-04)
-- `refactor/rust-daemon-port` = `f9d2298` (PR A audit wins) — PR #2 open
+- `main` = `a008019` (PR A audit wins merged, 2026-04-04)
+- `feat/sync-buddy-rust` = off main — PR B branch, no commits yet
 - buddy.json: `~/.config/pixel-terminal/buddy.json`
 - Feed: `~/.local/share/pixel-terminal/vexil_feed.jsonl`
 - App name: **Anima** | Bundle ID: `com.bradleytangonan.anima`
@@ -26,12 +25,12 @@
 - PR #2 merge blocked on manual smoke test: drag file > 20MB into chat, confirm error token appears
 
 ### Last Session Snapshot
-Date: 2026-04-04 (Session 3)
-Open actions (MERGED — from 2 sessions):
-- [ ] Smoke test > 20MB attachment — confirm error token, no hang (blocks PR #2 merge)
+Date: 2026-04-04 (Session 3 end)
+Open actions:
+- [x] Smoke test > 20MB attachment — PASSED, toast works
+- [x] Merge PR #2 — done, main = a008019
 - [ ] Confirm vexil daemon feed path: `~/.local/share/pixel-terminal/vexil_feed.jsonl`
-- [ ] Merge PR #2 after smoke test
-- [ ] PR B: sync_buddy Tauri command + 1000 test vectors (UUID→buddy fixture)
+- [ ] PR B: sync_buddy Tauri command in commands/companion.rs + wyhash crate + 1000 test vectors
 - [ ] Launch prep: Demo GIF, README rewrite, v0.1.0-alpha .dmg, awesome-claude-code PR
-Decisions: 6 | Fixes: 7 | Progress: 2
-Next: → smoke test > 20MB file drag → merge PR #2 → start PR B
+Decisions: 6 | Fixes: 8 | Progress: 3
+Next: → PR B — generate test vectors from sync_real_buddy.ts, port to Rust, validate parity
