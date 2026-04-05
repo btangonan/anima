@@ -1,0 +1,21 @@
+{
+  "threshold_loc": 300,
+  "oversized_count": 11,
+  "files": [
+    { "path": "src-tauri/src/commands/daemon.rs", "loc": 782, "severity": "CRITICAL", "notes": "Combines oracle logic, pattern detection, JSONL IPC, subprocess management — multiple responsibilities" },
+    { "path": "src/companion.js", "loc": 683, "severity": "HIGH", "notes": "Companion animation, state machine, oracle integration, UI rendering all in one file" },
+    { "path": "src/history.js", "loc": 528, "severity": "HIGH", "notes": "Session history rendering, JSONL parsing, search, export" },
+    { "path": "src/session-lifecycle.js", "loc": 492, "severity": "HIGH", "notes": "Claude subprocess lifecycle, message streaming, input handling, folder picker" },
+    { "path": "scripts/sprite-gen.js", "loc": 471, "severity": "MEDIUM", "notes": "Dev tool/script — lower priority" },
+    { "path": "src/voice.js", "loc": 423, "severity": "HIGH", "notes": "Voice mode UI + Omi WS bridge + oracle pipeline in one file" },
+    { "path": "src/cards.js", "loc": 423, "severity": "HIGH", "notes": "Session card rendering, re-roll logic, drag/drop, stats" },
+    { "path": "src/events.js", "loc": 418, "severity": "HIGH", "notes": "All Claude event routing (tool, result, assistant, error, rate-limit) in one file" },
+    { "path": "src/app.js", "loc": 413, "severity": "HIGH", "notes": "App bootstrap, layout, keyboard shortcuts, sidebar, reset logic — true god file" },
+    { "path": "src-tauri/src/commands/companion.rs", "loc": 396, "severity": "MEDIUM", "notes": "sync_buddy + oracle_query + wyhash + buddy bones in one file" },
+    { "path": "src/attachments.js", "loc": 378, "severity": "MEDIUM", "notes": "Attachment panel, token preview, image handling" }
+  ],
+  "css_oversized": [
+    { "path": "src/styles.css", "loc": 1967, "notes": "Legacy monolith — partially split to src/styles/ but root file still active" },
+    { "path": "src/styles/base.css", "loc": 1065, "notes": "Base split but still very large" }
+  ]
+}

@@ -1,15 +1,4 @@
-use std::collections::HashSet;
 use std::fs;
-use std::sync::Mutex;
-
-/// Tauri State: set of child PIDs this app has spawned. Used to restrict send_signal.
-pub(crate) struct SpawnedPids(pub(crate) Mutex<HashSet<u32>>);
-
-impl SpawnedPids {
-    pub(crate) fn new() -> Self {
-        SpawnedPids(Mutex::new(HashSet::new()))
-    }
-}
 
 #[derive(serde::Serialize)]
 pub(crate) struct SlashCommand {
@@ -119,41 +108,6 @@ pub fn read_slash_commands() -> Vec<SlashCommand> {
     collect_commands(&dir, None, &mut commands);
     commands.sort_by(|a, b| a.name.cmp(&b.name));
     commands
-}
-
-/// Register a child PID that this app has spawned. Required before send_signal accepts it.
-#[tauri::command]
-pub fn register_child_pid(state: tauri::State<SpawnedPids>, pid: u32) {
-    state.0.lock().unwrap().insert(pid);
-}
-
-/// Unregister a child PID (call when the child exits).
-#[tauri::command]
-pub fn unregister_child_pid(state: tauri::State<SpawnedPids>, pid: u32) {
-    state.0.lock().unwrap().remove(&pid);
-}
-
-/// Send a POSIX signal to a process by PID.
-/// Restricted to PIDs registered via register_child_pid.
-/// Only SIGINT (2) and SIGTERM (15) are accepted.
-#[tauri::command]
-pub fn send_signal(state: tauri::State<SpawnedPids>, pid: u32, signal: i32) -> Result<(), String> {
-    const ALLOWED_SIGNALS: [i32; 2] = [2, 15]; // SIGINT, SIGTERM
-    if !ALLOWED_SIGNALS.contains(&signal) {
-        return Err(format!("Signal {} not allowed (permitted: SIGINT=2, SIGTERM=15)", signal));
-    }
-    {
-        let pids = state.0.lock().unwrap();
-        if !pids.contains(&pid) {
-            return Err(format!("PID {} is not a registered child process", pid));
-        }
-    }
-    let ret = unsafe { libc::kill(pid as i32, signal) };
-    if ret == 0 {
-        Ok(())
-    } else {
-        Err(format!("kill({}, {}) failed: errno {}", pid, signal, unsafe { *libc::__error() }))
-    }
 }
 
 /// Forward JS console.log to terminal for debugging.

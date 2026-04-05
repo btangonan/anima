@@ -1,44 +1,44 @@
 {
+  "audit_date": "2026-04-05",
+  "auditor": "Claude Sonnet 4.6 + Gemini adversarial (Stage 9 pending)",
   "scores": {
     "loc_discipline": {
-      "score": 0,
+      "score": 1,
       "max": 3,
-      "evidence": "12/25 source files exceed 300 LOC (48%). styles.css at 1967 LOC is 6.5× the limit. lib.rs at 602 LOC. vexil_master.py at 716 LOC.",
-      "rule": "Score 0: Frequent >500 LOC files"
+      "evidence": "11 source files >300 LOC. daemon.rs=782, companion.js=683, history.js=528, session-lifecycle.js=492, events.js=418, app.js=413. CSS monolith (styles.css=1967) partially split but root file still active.",
+      "verdict": "Many >300 LOC files. SRP violated across most major modules."
     },
     "validation_coverage": {
-      "score": 0,
+      "score": 2,
       "max": 3,
-      "evidence": "0% of Tauri IPC commands have input validation (path sanitization, type guards, allowlists). Only markdown rendering path uses DOMPurify. send_signal validates neither pid nor signal.",
-      "rule": "Score 0: No schema validation"
+      "evidence": "Rust IPC boundaries use serde::Deserialize typed structs + strict path allowlist in file_io.rs. JS uses esc() for all user-controlled HTML, DOMPurify for markdown output. No Zod/JSON Schema on JS input path (but Tauri typed IPC provides some coverage). CSP set but includes unsafe-inline.",
+      "verdict": "Good boundary enforcement; no JS-side input schema; unsafe-inline weakens CSP."
     },
     "secrets_hygiene": {
       "score": 2,
       "max": 3,
-      "evidence": "No hardcoded secrets found. No .env files. But CSP is null, no secret manager, no lint rule enforcing .env usage.",
-      "rule": "Score 2: Env + no secrets (missing lint + secret manager for score 3)"
+      "evidence": "No hardcoded secrets found. Config via std::env::var(HOME). No .env files. No secret manager integration. No lint rules enforcing this.",
+      "verdict": "Env-based loading is correct. No secret manager or automated scan in CI."
     },
     "state_persistence": {
       "score": 1,
       "max": 3,
-      "evidence": "In-memory session state (lost on crash). localStorage for small UI prefs. File-based for history (read-only). No crash recovery, no idempotency keys, no session re-attach.",
-      "rule": "Score 1: Mixed ad-hoc persistence"
+      "evidence": "Nim balance + session state in localStorage (volatile on WebKit cache clear). DaemonState in Arc<Mutex<>> — lost on app restart. JSONL append for vexil_feed — no compaction. History in ~/.local/share/*.jsonl files. No idempotency keys anywhere.",
+      "verdict": "Mixed ad-hoc persistence. In-memory daemon state is lost on restart. No durability guarantees."
     },
     "errors_retry_idempotency": {
-      "score": 1,
+      "score": 2,
       "max": 3,
-      "evidence": "Rust uses Result<T,String> consistently. JS has 10+ silent catch(_){} blocks. No retry logic. No structured error format. No idempotency.",
-      "rule": "Score 1: Some try/catch"
+      "evidence": "Rust: Result<T, String> throughout — no structured error types (no thiserror/anyhow). 3 remaining .unwrap() on mutex locks in misc.rs (non-test). JS: try/catch with UI error surfacing. Rate-limit events handled with retry count display. No retry/backoff for oracle subprocess calls (timeout only). No idempotency keys.",
+      "verdict": "Basic error handling present. No structured types, no retry/backoff, no idempotency."
     },
     "testing_ci": {
-      "score": 0,
+      "score": 2,
       "max": 3,
-      "evidence": "No test framework. No CI. One bespoke structural smoke test (test_auto.cjs, 220 LOC) not wired to any gate.",
-      "rule": "Score 0: No tests"
+      "evidence": "28 tests total: 15 JS (nim + dom), 13 Rust (daemon_patterns + sync_buddy_parity). All passing. 2-job CI on push/PR to main. No coverage gate. Major modules untested: companion.js (683 LOC), session-lifecycle.js (492 LOC), events.js (418 LOC), app.js (413 LOC), voice.js (423 LOC).",
+      "verdict": "Units + basic CI present. Coverage of business-critical JS modules is ~10%."
     }
   },
-  "total": 4,
-  "max": 18,
-  "percent": 22,
-  "label": "Early / Prototype Stage"
+  "total": "10/18",
+  "overall_maturity": "DEVELOPING"
 }
