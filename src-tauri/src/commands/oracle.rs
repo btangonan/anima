@@ -209,6 +209,7 @@ pub(crate) fn build_oracle_system(sessions: &[Value]) -> String {
     ctx.push_str(&format!("You are {name}, watching Claude Code sessions.\nOpen sessions: {}.\n", sessions_str.join("; ")));
     if !trait_line.is_empty() { ctx.push_str(&trait_line); ctx.push('\n'); }
     ctx.push_str("\nAnswer directly from what you know. Be opinionated and specific. 2 sentences max. Cut to the insight, not the description.");
+    ctx.push_str("\nUsers type fast with typos and shorthand. Always infer intent from context — never ask them to rephrase or clarify obvious misspellings.");
     ctx
 }
 
@@ -220,6 +221,7 @@ pub(crate) async fn run_oracle(
     sessions: Vec<Value>,
     ra_snap:  HashMap<String, Vec<(f64, String, String)>>,
     cv_snap:  HashMap<String, Vec<ConvoEntry>>,
+    commentary_snap: Vec<(f64, String)>,
     oracle:   &Arc<OraclePool>,
 ) -> Option<String> {
     let now = now_s();
@@ -257,6 +259,19 @@ pub(crate) async fn run_oracle(
     let mut ctx = build_oracle_system(&sessions);
     if !activity_lines.is_empty() { ctx.push_str(&format!("\nRecent tool activity:\n{}\n", activity_lines.join("\n"))); }
     if !convo_lines.is_empty()    { ctx.push_str(&format!("Recent session conversation:\n{}\n", convo_lines.join("\n"))); }
+
+    // Inject recent proactive commentary so oracle knows what "it" said in the bubble
+    let recent_says: Vec<&str> = commentary_snap.iter()
+        .filter(|(ts, _)| now - ts < 120.0)
+        .map(|(_, msg)| msg.as_str())
+        .collect();
+    if !recent_says.is_empty() {
+        ctx.push_str(&format!(
+            "\nYou recently said these in your speech bubble (users see them and may reply):\n{}\n\
+            If the user references something you said, connect it to this context.\n",
+            recent_says.iter().enumerate().map(|(i, s)| format!("  {}. {}", i + 1, s)).collect::<Vec<_>>().join("\n")
+        ));
+    }
 
     // Build conversation with history
     let mut history_str = String::new();
@@ -297,8 +312,8 @@ pub async fn oracle_query(
     sessions: Vec<Value>,
     state:    tauri::State<'_, Arc<DaemonShared>>,
 ) -> Result<Value, String> {
-    // Snapshot activity/convo without holding the lock during the claude call
-    let (ra_snap, cv_snap) = {
+    // Snapshot activity/convo/commentary without holding the lock during the claude call
+    let (ra_snap, cv_snap, commentary_snap) = {
         let st = state.state.lock().map_err(|e| e.to_string())?;
         let ra: HashMap<String, Vec<(f64, String, String)>> = st.recent_activity.iter()
             .map(|(k, v)| (k.clone(), v.iter().map(|(ts, t, h, _, _)| (*ts, t.clone(), h.clone())).collect()))
@@ -306,10 +321,11 @@ pub async fn oracle_query(
         let cv: HashMap<String, Vec<ConvoEntry>> = st.session_convo.iter()
             .map(|(k, v)| (k.clone(), v.iter().cloned().collect()))
             .collect();
-        (ra, cv)
+        let cm: Vec<(f64, String)> = st.recent_commentary.iter().cloned().collect();
+        (ra, cv, cm)
     };
 
-    let reply = run_oracle(message, history, sessions, ra_snap, cv_snap, &state.oracle).await
+    let reply = run_oracle(message, history, sessions, ra_snap, cv_snap, commentary_snap, &state.oracle).await
         .ok_or_else(|| "oracle unreachable".to_string())?;
 
     println!("[oracle] query → \"{}\"", &reply[..reply.len().min(80)]);

@@ -29,7 +29,7 @@ const COOLDOWN_S:            f64 = 6.0;
 const TURN_COOLDOWN_S:       f64 = 4.0;
 const TOKEN_BLOAT_THRESHOLD: u64 = 80_000;
 const FIRED_PATTERN_TTL_S:   f64 = 300.0;
-const ACTIVITY_TRIGGER_CNT:  u32 = 4;
+const ACTIVITY_TRIGGER_CNT:  u32 = 2;
 const ACTIVITY_RECENCY_S:    f64 = 90.0;
 const MID_TURN_TOOL_CNT:     u32 = 2;   // comment mid-turn after N tool_use events per tick
 
@@ -56,6 +56,7 @@ pub struct DaemonState {
     pub(crate) tools_since:     u32,
     pub(crate) tool_errors:     HashMap<String, Vec<String>>,
     pub(crate) recent_actions:  VecDeque<String>,
+    pub(crate) recent_commentary: VecDeque<(f64, String)>, // (ts, msg) — shared with oracle chat
     // Feed reader state
     pub(crate) feed_offset: u64,
     pub(crate) feed_inode:  u64,

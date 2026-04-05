@@ -215,6 +215,11 @@ pub(crate) async fn commentary_worker(trigger: String, data: Value, persona: Str
             println!("[daemon] suppressed internal ref: \"{}\"", &msg[..msg.len().min(80)]);
         } else {
             append_out(&msg).await;
+            // Share with oracle chat so direct conversations know what "we" said
+            if let Ok(mut st) = shared.state.lock() {
+                st.recent_commentary.push_back((now_s(), msg.clone()));
+                if st.recent_commentary.len() > 4 { st.recent_commentary.pop_front(); }
+            }
             // Extract *action* to prevent repetition
             if let (Some(s), Some(e)) = (msg.find('*'), msg.rfind('*')) {
                 if s < e {
