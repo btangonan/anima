@@ -55,7 +55,7 @@ setHistoryDeps({
 });
 
 // ── Bootstrap ─────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   initDOM();
 
   // One-time cleanup: remove stale flags that shouldn't persist across sessions
@@ -67,6 +67,17 @@ window.addEventListener('DOMContentLoaded', () => {
   initVoice();
   initAttachments({ getActiveSessionId });
   initHistory();
+
+  // Sync buddy.json from ~/.claude.json before companion loads so the companion
+  // reads up-to-date species/rarity/stats on first render (replaces bun sync_real_buddy.ts)
+  try {
+    const { invoke } = window.__TAURI__.core;
+    const result = await invoke('sync_buddy');
+    invoke('js_log', { msg: `[sync-buddy] ${result.message}` }).catch(() => {});
+  } catch (e) {
+    console.warn('[sync-buddy] invoke failed:', e);
+  }
+
   initCompanion();
 
   // Sync oracle pre-chat height to match input-bar exactly

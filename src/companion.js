@@ -608,7 +608,7 @@ export async function initCompanion() {
   }
 
   // Sync buddy species with Claude Code companion — buddy.json is sole owner of this write
-  // Skip if sync_real_buddy.ts already ran at launch (wyhash is authoritative over FNV-1a)
+  // Skip if sync_buddy (Rust) already ran at startup (wyhash is authoritative over FNV-1a)
   try {
     if (buddy.syncedFrom === 'claude-code') {
       // Real sync already wrote correct species — FNV-1a would produce wrong result

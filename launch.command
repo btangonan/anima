@@ -105,8 +105,7 @@ rm -rf ~/Library/Caches/pixel-terminal/WebKit/NetworkCache
 source ~/.zprofile 2>/dev/null || true
 source ~/.zshrc    2>/dev/null || true
 
-# Sync buddy.json from real Claude Code account data (name, species, rarity, stats)
-bun run "$(dirname "$0")/scripts/sync_real_buddy.ts" >> "$LOG_FILE" 2>&1 || true
+# Note: buddy.json sync now runs inside the app via invoke('sync_buddy') — Rust port of sync_real_buddy.ts
 
 # Start Vexil Master daemon — proactive cross-session commentary
 python3 "$(dirname "$0")/scripts/vexil_master.py" >> "$LOG_FILE" 2>&1 &
