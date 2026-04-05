@@ -105,6 +105,28 @@ async function stageFilePath(sessionId, path) {
   const isImage = isImagePath(path);
   const mimeType = guessMimeType(name);
 
+  // Guard: reject files > 20MB before reading to prevent OOM
+  const MAX_BYTES = 20 * 1024 * 1024;
+  try {
+    const fileSize = await invoke('get_file_size', { path });
+    if (fileSize > MAX_BYTES) {
+      console.warn(`[attachments] ${name} too large (${(fileSize / 1024 / 1024).toFixed(1)} MB) — max 20 MB`);
+      // Show user-visible error in the attachment panel area
+      const container = document.getElementById('attachment-tokens');
+      if (container) {
+        const errEl = document.createElement('span');
+        errEl.className = 'att-token att-error';
+        errEl.textContent = `${name} too large (max 20 MB)`;
+        container.classList.remove('hidden');
+        container.appendChild(errEl);
+        setTimeout(() => errEl.remove(), 4000);
+      }
+      return;
+    }
+  } catch (e) {
+    // get_file_size failed (e.g. path denied) — let read_file_as_base64 handle the error
+  }
+
   let data;
   let finalMimeType = mimeType;
   let originalWidth = null, originalHeight = null;

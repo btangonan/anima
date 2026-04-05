@@ -68,7 +68,7 @@ function hashStr(str) {
 // ── Stat generation ───────────────────────────────────────────────────────────
 
 function rollStat(rand) {
-  // Weighted toward extremes: roll 3d10, keep weighted result
+  // Roll 2d10 and average — triangular distribution (1–10, peaks around 5–6)
   const a = Math.floor(rand() * 10) + 1;
   const b = Math.floor(rand() * 10) + 1;
   return Math.min(10, Math.max(1, Math.round((a + b) / 2)));

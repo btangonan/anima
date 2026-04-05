@@ -306,8 +306,15 @@ def _read_file_context(file_path: Optional[str], cwd: Optional[str], max_lines: 
         if not p.is_absolute() and cwd:
             p = (Path(cwd) / p).resolve()
         # Safety: path must stay within cwd
-        if cwd and not str(p).startswith(str(Path(cwd).resolve())):
-            return None
+        if cwd:
+            try:
+                not_in_cwd = not p.is_relative_to(Path(cwd).resolve())
+            except AttributeError:
+                # Python < 3.9 fallback — add trailing slash to prevent prefix collision
+                resolved_cwd = str(Path(cwd).resolve()).rstrip('/') + '/'
+                not_in_cwd = not str(p).startswith(resolved_cwd)
+            if not_in_cwd:
+                return None
         lines = p.read_text(errors='replace').splitlines()
         excerpt = '\n'.join(lines[:max_lines])
         return f'--- {p.name} ---\n{excerpt}'
@@ -350,6 +357,12 @@ def main() -> None:
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     feed_offset: int = 0
+    last_feed_inode: int = 0
+    # Initialize inode if file already exists
+    try:
+        last_feed_inode = os.stat(FEED_PATH).st_ino
+    except FileNotFoundError:
+        pass
     last_comment_ts: float = 0.0
     tool_errors: Dict[str, list] = {}
 
@@ -482,6 +495,15 @@ def main() -> None:
         # ── Read new feed entries ─────────────────────────────────────────────
         new_entries: list[dict] = []
         try:
+            # Detect feed file rotation (new file at same path — inode changed)
+            try:
+                current_inode = os.stat(FEED_PATH).st_ino
+                if current_inode != last_feed_inode:
+                    feed_offset = 0
+                    last_feed_inode = current_inode
+            except FileNotFoundError:
+                time.sleep(POLL_INTERVAL)
+                continue
             # Detect file truncation/rotation — reset offset so events aren't missed
             try:
                 if os.path.getsize(FEED_PATH) < feed_offset:
