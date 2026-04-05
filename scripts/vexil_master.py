@@ -122,6 +122,22 @@ def call_claude_oracle(message: str, history: list, sessions: list = None, live_
     name        = companion.get('name') or buddy.get('name', 'Vexil')
     personality = companion.get('personality') or buddy.get('personality', '')
 
+    buddy_species = buddy.get('species', '')
+    buddy_voice   = buddy.get('voice', '')
+    buddy_stats   = buddy.get('stats', {})
+    peak_stat     = max(buddy_stats, key=lambda k: buddy_stats[k]) if buddy_stats else ''
+    peak_val      = buddy_stats.get(peak_stat, 0) if peak_stat else 0
+
+    # Build trait line — shared across both branches
+    trait_line = ''
+    if buddy_species or buddy_voice or peak_stat:
+        trait_line = f"Species: {buddy_species}." if buddy_species else ''
+        if buddy_voice and buddy_voice != 'default':
+            trait_line += f" Voice: {buddy_voice}."
+        if peak_stat:
+            trait_line += f" Peak trait: {peak_stat} {peak_val}/10."
+        trait_line = trait_line.strip()
+
     if sessions:
         sessions_str = '; '.join(f"{s.get('name')} ({s.get('cwd')})" for s in sessions)
         context = f"{personality}\n\n" if personality else ''
@@ -129,6 +145,8 @@ def call_claude_oracle(message: str, history: list, sessions: list = None, live_
             f"You are {name}, watching Claude Code sessions.\n"
             f"Open sessions: {sessions_str}.\n"
         )
+        if trait_line:
+            context += trait_line + "\n"
         if live_ctx:
             context += f"Recent tool activity:\n{live_ctx}\n"
         if recent_convo:
@@ -139,6 +157,8 @@ def call_claude_oracle(message: str, history: list, sessions: list = None, live_
         )
     else:
         context = f"{personality}\n\n" if personality else ''
+        if trait_line:
+            context += trait_line + "\n"
         context += (
             f"You are {name}. No sessions open — you're blind right now. "
             "Tell the user to press + to open a project folder. "
