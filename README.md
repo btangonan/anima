@@ -3,7 +3,7 @@
 </h1>
 
 <h2 align="center" style="padding-bottom: 20px;">
-  Your Claude Code environment, inhabited.
+  Your Claude Buddy needs friends.
 </h2>
 
 <p align="center">
