@@ -25,7 +25,7 @@ Anima turns your Claude buddy into an oracle. A cross-session code supervisor ru
 
 Claude Code ships with a basic buddy. An ASCII creature that hatches in your terminal, watches you work, and occasionally drops a line in a speech bubble. It's charming. It's also limited: the buddy can't see across sessions, can't remember what happened last time, its commentary comes from a small model working with a 5,000-character window, and the speech bubble text can't be copied or pasted back into your session.
 
-Each project folder also gets its own familiar. An ASCII companion that animates while Claude is working, so you can see at a glance which sessions are done and waiting on you. Every 1,000 tokens earns 1 nim. Spend it to re-roll for a new species, rarity, and personality.
+Each project folder also gets its own familiar. An ASCII companion that animates while Claude is working, so you can see at a glance which sessions are done and waiting on you. Every 1,000 tokens earns 1 @nim@. Spend it to re-roll for a new species, rarity, and personality.
 
 <p align="center">
 <img src="graphics/02_gifs/00_git-ready/anima-demo.gif" alt="Anima demo">
@@ -38,7 +38,7 @@ Each project folder also gets its own familiar. An ASCII companion that animates
 ## Features
 
 - **One project, one companion.** Every project gets a unique familiar generated from a weighted rarity pool. Two developers on the same codebase won't get the same creature.
-- **Nim token economy.** 1 nim per 1000 tokens spent. Spend on re-rolls and new characters.
+- **@nim@ token economy.** 1 @nim@ per 1000 tokens spent. Spend on re-rolls and new characters.
 - **Collectible familiar cards.** Each project gets a stat card: species, rarity, power ratings, session history.
 - **Cross-session watcher.** Rust daemon monitors all active Claude sessions simultaneously. Catches retry loops and read-heavy spirals in real time.
 - **Oracle commentary.** Companion fires contextual observations in a speech bubble. Selectable text you can paste straight into the session.
@@ -58,12 +58,7 @@ Each project folder also gets its own familiar. An ASCII companion that animates
 <img src="graphics/02_gifs/00_git-ready/anima_d.gif" alt="Multi-session workflow">
 </p>
 
-*Commentary runs as short background prompts via the Claude CLI, capped at 2 concurrent calls. All processing is local; nothing leaves your machine except the API calls you'd make anyway.*
-
-<p align="center">
-<img src="graphics/01_ui/anima_stat-card.png" alt="Familiar stat card" width="420">
-<img src="graphics/01_ui/anima_oracle-chat.png" alt="Oracle commentary" width="280">
-</p>
+Commentary runs as short background prompts via the Claude CLI, capped at 2 concurrent calls. All processing is local; nothing leaves your machine except the API calls you'd make anyway.
 
 ## Requirements
 
@@ -77,7 +72,7 @@ Each project folder also gets its own familiar. An ASCII companion that animates
 2. Open the app
 3. Point it at a project directory and start a session
 
-The companion generates on first session. Nim accrues automatically.
+The companion generates on first session. @nim@ accrues automatically.
 
 ### Build from source
 
