@@ -6,6 +6,10 @@
   Your Claude Code environment, inhabited.
 </h2>
 
+<p align="center">
+  <img src="graphics/02_gifs/00_git-ready/anima-session-familiars.gif" alt="ASCII familiars in session list" width="260">
+</p>
+
 <div align="center" style="margin-top: 25px;">
 
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-FFC131?logo=tauri&style=flat)](https://tauri.app)
@@ -27,7 +31,7 @@ Anima turns your Claude buddy into an oracle — a cross-session code supervisor
 
 Each project folder also gets its own familiar — an ASCII companion that animates while Claude is working, so you can see at a glance which sessions are done and waiting on you. Every 1,000 tokens earns 1 nim — spend it to re-roll for a new species, rarity, and personality.
 
-The name comes from animism. Not sacred. Just alive.
+![Sessions and companions](graphics/02_gifs/00_git-ready/anima_a.gif)
 
 ![Anima demo](graphics/02_gifs/00_git-ready/anima-demo.gif)
 
@@ -44,13 +48,13 @@ The name comes from animism. Not sacred. Just alive.
 
 ## How it looks
 
-![Sessions and companions](graphics/02_gifs/00_git-ready/anima_a.gif)
-
-**Sessions have faces.** Open a project and a companion appears — species drawn from a weighted rarity pool, personality seeded from the project path. Rare pulls happen.
-
 ![Familiar cards and economy](graphics/02_gifs/00_git-ready/anima_b.gif)
 
 **Token spend means something.** Every 1000 tokens earns 1 nim. Nim funds re-rolls, new companions, cosmetics. Not a limit to dread. A counter to fill.
+
+![Familiar cards](graphics/02_gifs/00_git-ready/anima-session-familiars-cards.gif)
+
+**Every familiar gets a stat card.** Species, rarity, power ratings, session history — like a trading card for your codebase.
 
 ![Watcher commentary](graphics/02_gifs/00_git-ready/anima_c-1.gif)
 
