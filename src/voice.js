@@ -65,7 +65,11 @@ function renderVexilLog(entries) {
   if (!$.vexilLog) return;
   $.vexilLog.innerHTML = entries.map(e => {
     const cls = STATE_CLASS[e.state] ?? '';
-    return `<div class="vexil-entry ${cls}"><span class="vexil-ts">${escapeHtml(fmtTs(e.ts))}</span>${escapeHtml(e.msg)}</div>`;
+    const hasSend = (e.state !== 'ops' && e.msg);
+    const sendCls = hasSend ? ' has-send' : '';
+    const dataMsg = hasSend ? ` data-msg="${escapeHtml(e.msg).replace(/"/g, '&quot;')}"` : '';
+    const overlay = hasSend ? `<div class="send-overlay"><button>SEND TO CLAUDE \u2192</button></div>` : '';
+    return `<div class="vexil-entry ${cls}${sendCls}"${dataMsg}><span class="vexil-ts">${escapeHtml(fmtTs(e.ts))}</span>${escapeHtml(e.msg)}${overlay}</div>`;
   }).join('');
   // Oldest first in array — scroll to bottom so latest is visible (matches session log flow)
   $.vexilLog.scrollTop = $.vexilLog.scrollHeight;
@@ -113,6 +117,17 @@ function initVexilTabs() {
       if ($.voiceLog) $.voiceLog.innerHTML = '';
     }
   }, true);  // capture phase
+
+  // Event delegation: only the button inside send-overlay triggers send
+  $.vexilLog?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.send-overlay button');
+    if (!btn) return;
+    const entry = btn.closest('.has-send');
+    if (!entry) return;
+    const msg = entry.dataset.msg;
+    const sid = getActiveSessionId();
+    if (sid && msg) sendMessage(sid, msg);
+  });
 }
 
 // ── Indicator updates ──────────────────────────────────────
@@ -256,8 +271,14 @@ function initOraclePreChat() {
 
       const ts = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
       const el = document.createElement('div');
-      el.className = 'vexil-entry vexil-entry--buddy';
-      el.innerHTML = `<span class="vexil-ts">[${ts}]</span>${escapeHtml(resp.msg)}`;
+      el.className = 'vexil-entry vexil-entry--buddy has-send';
+      el.dataset.msg = resp.msg;
+      el.innerHTML = `<span class="vexil-ts">[${ts}]</span>${escapeHtml(resp.msg)}<div class="send-overlay"><button>SEND TO CLAUDE \u2192</button></div>`;
+      el.querySelector('.send-overlay button').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const sid = getActiveSessionId();
+        if (sid) sendMessage(sid, resp.msg);
+      });
       _oracleChatLog?.appendChild(el);
       if (_oracleChatLog) requestAnimationFrame(() => { _oracleChatLog.scrollTop = _oracleChatLog.scrollHeight; });
 

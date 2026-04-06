@@ -506,7 +506,7 @@ const LINT_LOG = new Map();
 function addToLintLog(state, msg) {
   const sessionId = getActiveSessionId();
   if (!sessionId) return;
-  const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   if (!LINT_LOG.has(sessionId)) LINT_LOG.set(sessionId, []);
   const log = LINT_LOG.get(sessionId);
   log.push({ ts, state, msg: msg ?? '' });

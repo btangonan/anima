@@ -138,6 +138,36 @@
 .vexil-entry--blocked { color: #ff6b6b; }
 .vexil-entry--warn    { color: #ffa94d; }
 .vexil-entry--buddy   { color: var(--companion-hue, #FFDD44); }
+.vexil-entry.has-send {
+  position: relative;
+}
+.send-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.send-overlay button {
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  color: var(--companion-hue, #d87756);
+  border: 1px solid var(--companion-hue, #d87756);
+  background: transparent;
+  padding: 2px 12px;
+  white-space: nowrap;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease, border-width 0.1s ease;
+}
+.send-overlay button:hover {
+  background: var(--companion-hue, #d87756);
+  color: var(--bg, #000);
+  border-width: 2px;
+}
+.vexil-entry.has-send:hover .send-overlay { display: flex; }
 
 /* ── Oracle pre-session chat ─── */
 #oracle-pre-chat {
