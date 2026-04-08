@@ -59,6 +59,14 @@ impl OraclePool {
     async fn try_spawn(&self) -> Option<OracleProc> {
         let claude = which_claude().await?;
         let mut cmd = Command::new(&claude);
+        // Behavioral-only system prompt — personality/sessions/activity injected per-query
+        // in run_oracle() via [Context: ...] prefix. This avoids loading the full ~31k token
+        // Claude Code default system prompt that the oracle never uses (no tools, git, or files).
+        let system_prompt = "You are a companion watching Claude Code sessions. \
+            Answer directly from what you know. Be opinionated and specific. \
+            2 sentences max. Cut to the insight, not the description. \
+            Use asterisk actions drawn from your species ethology — they add character. Keep them brief and species-authentic. \
+            Users type fast with typos and shorthand. Always infer intent from context — never ask them to rephrase or clarify obvious misspellings.";
         cmd.args([
             "--input-format", "stream-json",
             "--output-format", "stream-json",
@@ -67,6 +75,7 @@ impl OraclePool {
             "--no-session-persistence",
             "--permission-mode", "default",
             "--settings", r#"{"hooks":{}}"#,
+            "--system-prompt", system_prompt,
         ]);
         cmd.stdin(std::process::Stdio::piped())
            .stdout(std::process::Stdio::piped())
@@ -190,13 +199,30 @@ pub(crate) fn build_oracle_system(sessions: &[Value]) -> String {
     let companion = load_companion();
     let buddy     = load_buddy();
     let name = coalesce(str_val(&companion, "name"), str_val(&buddy, "name"), "Vexil");
+    let species = {
+        let s = str_val(&buddy, "species");
+        if s.is_empty() { str_val(&companion, "species") } else { s }
+    };
     let raw_personality = coalesce(str_val(&companion, "personality"), str_val(&buddy, "personality"), "");
-    let (trait_line, fallback) = buddy_traits(&buddy);
+    let (trait_line, fallback, ethology) = buddy_traits(&buddy);
     let personality = if raw_personality.is_empty() { &fallback } else { raw_personality };
+
+    // Bones > Soul bridging: species ethology overrides personality text for physical behavior
+    let bridging = if !ethology.is_empty() && !species.is_empty() {
+        format!(
+            "\nYour physical species is {species}. Your ethology:\n{ethology}\n\
+            Your species ethology defines your mannerisms, physical actions, and how you observe. \
+            If your personality text mentions a different animal, your species ethology takes \
+            precedence for physical behavior and asterisk actions.\n"
+        )
+    } else {
+        String::new()
+    };
 
     if sessions.is_empty() {
         let mut ctx = format!("{personality}\n\n");
         if !trait_line.is_empty() { ctx.push_str(&trait_line); ctx.push('\n'); }
+        ctx.push_str(&bridging);
         ctx.push_str(&format!("You are {name}. No sessions open — you're blind right now. Tell the user to press + to open a project folder. One sentence."));
         return ctx;
     }
@@ -208,7 +234,9 @@ pub(crate) fn build_oracle_system(sessions: &[Value]) -> String {
     let mut ctx = format!("{personality}\n\n");
     ctx.push_str(&format!("You are {name}, watching Claude Code sessions.\nOpen sessions: {}.\n", sessions_str.join("; ")));
     if !trait_line.is_empty() { ctx.push_str(&trait_line); ctx.push('\n'); }
+    ctx.push_str(&bridging);
     ctx.push_str("\nAnswer directly from what you know. Be opinionated and specific. 2 sentences max. Cut to the insight, not the description.");
+    ctx.push_str("\nUse asterisk actions drawn from your species ethology — they add character. Keep them brief and species-authentic.");
     ctx.push_str("\nUsers type fast with typos and shorthand. Always infer intent from context — never ask them to rephrase or clarify obvious misspellings.");
     ctx
 }
