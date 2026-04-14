@@ -174,14 +174,13 @@ function _oracleThinkTick() {
 
 function _startOracleThink() {
   if (_oracleThinkTimer) return;
-  // Measure actual runway: left edge of #vexil-ascii → just before .vexil-bio-text, minus sprite width
-  const asciiEl = document.getElementById('vexil-ascii');
-  const textEl  = document.querySelector('.vexil-bio-text');
-  if (asciiEl && textEl && _asciiPre) {
-    const asciiRect = asciiEl.getBoundingClientRect();
-    const textRect  = textEl.getBoundingClientRect();
-    const preW      = _asciiPre.getBoundingClientRect().width || 65;
-    _thinkMaxX = Math.max(8, Math.floor(textRect.left - asciiRect.left - preW - 4));
+  // Measure actual runway: full #vexil-bio row width minus sprite width and right margin.
+  // #vexil-ascii is only 78px but overflow:visible lets the sprite traverse the whole row.
+  const bioEl = document.getElementById('vexil-bio');
+  if (bioEl && _asciiPre) {
+    const bioW = bioEl.getBoundingClientRect().width;
+    const preW = _asciiPre.getBoundingClientRect().width || 65;
+    _thinkMaxX = Math.max(16, Math.floor(bioW - preW - 8));
   }
   // Hand off frame control — pause fidget and blink cycles
   clearTimeout(_asciiAnimTimer);
