@@ -430,6 +430,7 @@ async function sendMessage(id, text) {
     // Fire and forget — don't block the input or set session to working.
     // The oracle response goes directly to the VEXIL log tab.
     (async () => {
+      document.dispatchEvent(new CustomEvent('oracle:thinking'));
       try {
         const resp = await invoke('oracle_query', {
           message: raw,
@@ -443,6 +444,8 @@ async function sendMessage(id, text) {
         }
       } catch (err) {
         pxLog('VEXIL-ORACLE', `id:${id.slice(0,8)} oracle failed: ${err}`);
+      } finally {
+        document.dispatchEvent(new CustomEvent('oracle:idle'));
       }
     })();
     return;
