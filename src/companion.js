@@ -562,12 +562,12 @@ export async function initCompanion() {
   // Species: prefer term extracted from personality text (soul > bones for display)
   const bio = document.getElementById('vexil-bio');
   if (bio && buddy) {
-    // Bones species is authoritative — personality text may mention a stale species name
     const displaySpecies = buddy.species ?? 'duck';
-    const rarityStr = buddy.rarity ? `${buddy.rarity} ` : '';
-    bio.querySelector('.vexil-bio-name').textContent =
-      `${buddy.name} · ${rarityStr}${displaySpecies}`.trim();
-    // bio starts visible (no hidden class) — placeholder text already shown
+    const rarityStr = buddy.rarity ?? '';
+    const nameEl = bio.querySelector('.vexil-bio-name');
+    const typeEl = bio.querySelector('.vexil-bio-type');
+    if (nameEl) nameEl.textContent = buddy.name ?? '';
+    if (typeEl) typeEl.textContent = [rarityStr, displaySpecies].filter(Boolean).join(' ');
   }
 
   // Sync buddy species with Claude Code companion — buddy.json is sole owner of this write
@@ -671,9 +671,11 @@ export async function reloadBuddy() {
   const bio = document.getElementById('vexil-bio');
   if (bio && buddy) {
     const displaySpecies = buddy.species ?? 'duck';
-    const rarityStr = buddy.rarity ? `${buddy.rarity} ` : '';
+    const rarityStr = buddy.rarity ?? '';
     const nameEl = bio.querySelector('.vexil-bio-name');
-    if (nameEl) nameEl.textContent = `${buddy.name} · ${rarityStr}${displaySpecies}`.trim();
+    const typeEl = bio.querySelector('.vexil-bio-type');
+    if (nameEl) nameEl.textContent = buddy.name ?? '';
+    if (typeEl) typeEl.textContent = [rarityStr, displaySpecies].filter(Boolean).join(' ');
   }
   // Re-render ASCII sprite + reset animation for new species
   renderCompanionSprite();
