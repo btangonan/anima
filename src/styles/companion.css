@@ -11,7 +11,7 @@
 /* ── ASCII buddy sprite (inside vexil-bio header row) ── */
 #vexil-ascii {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   flex: 0 0 78px;      /* fixed 78px — sprites are 12 chars × 5.4px = ~65px + breathing room */
   width: 78px;
   max-width: 78px;
