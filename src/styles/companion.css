@@ -34,6 +34,15 @@
   transition: opacity 0.1s;
 }
 
+@keyframes oracle-bounce {
+  0%, 100% { transform: translateY(0);    }
+  30%       { transform: translateY(-5px); }
+  60%       { transform: translateY(-2px); }
+}
+.vexil-ascii-art.oracle-thinking {
+  animation: oracle-bounce 0.7s ease-in-out infinite;
+}
+
 /* Buddy bio — header row: art left, name right */
 .vexil-bio {
   display: flex;

@@ -152,61 +152,12 @@ let _asciiSpecies     = 'duck';
 let _asciiEye         = DEFAULT_EYE;
 let _asciiHat         = 'none';
 
-// Oracle thinking walk — discrete 320ms steps matching START HERE walker
-let _oracleThinkTimer = null;
-let _thinkX    = 0;
-let _thinkDir  = 1;
-let _thinkFrame = 0;
-let _thinkMinX = 0;      // left wall (negative, computed from DOM)
-let _thinkMaxX = 16;     // right wall (computed from DOM)
-const _THINK_STEP = 8;   // px per tick — matches START HERE walker
-
-function _oracleThinkTick() {
-  if (!_asciiPre) return;
-  _thinkFrame = (_thinkFrame + 1) % 3;
-  updateAsciiFrame(_thinkFrame);
-  _thinkX += _thinkDir * _THINK_STEP;
-  if (_thinkX >= _thinkMaxX) { _thinkX = _thinkMaxX; _thinkDir = -1; }
-  if (_thinkX <= _thinkMinX) { _thinkX = _thinkMinX; _thinkDir =  1; }
-  // Sprites face left by default — flip to face right when moving right (matches START HERE)
-  const flip = _thinkDir > 0 ? -1 : 1;
-  _asciiPre.style.transform = `translateX(${_thinkX}px) scaleX(${flip})`;
-}
-
 function _startOracleThink() {
-  if (_oracleThinkTimer) return;
-  // Compute full runway:
-  //   Left wall:  bio content left edge — #vexil-ascii is centered so there's space to its left
-  //   Right wall: just before .vexil-bio-text starts, minus sprite width and margin
-  const bioEl   = document.getElementById('vexil-bio');
-  const asciiEl = document.getElementById('vexil-ascii');
-  const textEl  = document.querySelector('.vexil-bio-text');
-  if (bioEl && asciiEl && textEl && _asciiPre) {
-    const bioRect   = bioEl.getBoundingClientRect();
-    const asciiRect = asciiEl.getBoundingClientRect();
-    const textRect  = textEl.getBoundingClientRect();
-    const preW      = _asciiPre.getBoundingClientRect().width || 65;
-    const padLeft   = parseFloat(getComputedStyle(bioEl).paddingLeft) || 8;
-    _thinkMinX = -(asciiRect.left - bioRect.left - padLeft);  // negative: space left of ascii
-    _thinkMaxX = Math.max(8, Math.floor(textRect.left - asciiRect.left - preW - 6));
-  }
-  // Hand off frame control — pause fidget and blink cycles
-  clearTimeout(_asciiAnimTimer);
-  clearTimeout(_asciiBlinkTimer);
-  _asciiState = 'idle';
-  _asciiBlinking = false;
-  _thinkX = _thinkMinX; _thinkDir = 1; _thinkFrame = 0;
-  _oracleThinkTimer = setInterval(_oracleThinkTick, 320);
+  _asciiPre?.classList.add('oracle-thinking');
 }
 
 function _stopOracleThink() {
-  if (!_oracleThinkTimer) return;
-  clearInterval(_oracleThinkTimer);
-  _oracleThinkTimer = null;
-  if (_asciiPre) _asciiPre.style.transform = '';
-  // Resume normal idle animation
-  scheduleNextFidget();
-  scheduleNextBlink();
+  _asciiPre?.classList.remove('oracle-thinking');
 }
 
 function getEyeChar(buddy) {
