@@ -19,11 +19,6 @@
   position: relative; /* anchor for oracle-view-btn */
 }
 
-/* Sway animation when oracle is processing a query */
-#vexil-ascii.thinking .vexil-ascii-art {
-  animation: oracle-sway 1.6s linear infinite;
-  will-change: transform;
-}
 
 .vexil-ascii-art {
   font-family: var(--font); /* ui-monospace/SF Mono — consistent char width, avoids Courier drift */

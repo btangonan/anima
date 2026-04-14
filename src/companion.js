@@ -152,6 +152,45 @@ let _asciiSpecies     = 'duck';
 let _asciiEye         = DEFAULT_EYE;
 let _asciiHat         = 'none';
 
+// Oracle thinking walk — discrete 320ms steps matching START HERE walker
+let _oracleThinkTimer = null;
+let _thinkX    = 0;
+let _thinkDir  = 1;
+let _thinkFrame = 0;
+const _THINK_STEP = 8;   // px per tick — matches START HERE walker
+const _THINK_MAX  = 8;   // ±8px oscillation range
+
+function _oracleThinkTick() {
+  if (!_asciiPre) return;
+  _thinkFrame = (_thinkFrame + 1) % 3;
+  updateAsciiFrame(_thinkFrame);
+  _thinkX += _thinkDir * _THINK_STEP;
+  if (_thinkX >= _THINK_MAX)  { _thinkX = _THINK_MAX;  _thinkDir = -1; }
+  if (_thinkX <= -_THINK_MAX) { _thinkX = -_THINK_MAX; _thinkDir =  1; }
+  _asciiPre.style.transform = `translateX(${_thinkX}px)`;
+}
+
+function _startOracleThink() {
+  if (_oracleThinkTimer) return;
+  // Hand off frame control — pause fidget and blink cycles
+  clearTimeout(_asciiAnimTimer);
+  clearTimeout(_asciiBlinkTimer);
+  _asciiState = 'idle';
+  _asciiBlinking = false;
+  _thinkX = 0; _thinkDir = 1; _thinkFrame = 0;
+  _oracleThinkTimer = setInterval(_oracleThinkTick, 320);
+}
+
+function _stopOracleThink() {
+  if (!_oracleThinkTimer) return;
+  clearInterval(_oracleThinkTimer);
+  _oracleThinkTimer = null;
+  if (_asciiPre) _asciiPre.style.transform = '';
+  // Resume normal idle animation
+  scheduleNextFidget();
+  scheduleNextBlink();
+}
+
 function getEyeChar(buddy) {
   // buddy.eyes may be set by Claude Code sync (e.g. 'sleepy', 'star')
   // or absent — fall back to dot
@@ -640,13 +679,9 @@ export async function initCompanion() {
   setInterval(pollOpsReport, 5000);   // ops report slower — less frequent events
   setInterval(pollMasterOut, 800);    // master proactive commentary — fast pickup for alacrity
 
-  // Oracle thinking sway — toggle class on sidebar sprite when oracle is in-flight
-  document.addEventListener('oracle:thinking', () => {
-    document.getElementById('vexil-ascii')?.classList.add('thinking');
-  });
-  document.addEventListener('oracle:idle', () => {
-    document.getElementById('vexil-ascii')?.classList.remove('thinking');
-  });
+  // Oracle thinking walk — discrete 320ms locomotion matching START HERE walker
+  document.addEventListener('oracle:thinking', _startOracleThink);
+  document.addEventListener('oracle:idle',     _stopOracleThink);
 
   document.dispatchEvent(new CustomEvent('pixel:companion-ready', { detail: { name: buddy?.name } }));
 }
