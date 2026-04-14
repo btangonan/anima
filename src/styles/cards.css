@@ -428,6 +428,16 @@ canvas.sprite-canvas {
   margin-left: auto;
 }
 
+/* Oracle re-roll — own row, separated from commentary controls */
+.fc-reroll-slot--oracle {
+  width: 100%;
+  margin-left: 0;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
 .fc-reroll-btn {
   background: none;
   border: 1px solid var(--border-hi);

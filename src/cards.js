@@ -244,7 +244,7 @@ export function showOracleCard(buddy) {
 
   // RE-ROLL ORACLE button
   const rerollOracleSlot = document.createElement('div');
-  rerollOracleSlot.className = 'fc-reroll-slot';
+  rerollOracleSlot.className = 'fc-reroll-slot fc-reroll-slot--oracle';
   const rerollOracleBtn = document.createElement('button');
   rerollOracleBtn.className = 'fc-reroll-btn';
   rerollOracleBtn.textContent = 'RE-ROLL ORACLE';
