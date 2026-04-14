@@ -12,17 +12,17 @@
 #vexil-ascii {
   display: flex;
   align-items: flex-end;
-  flex: 0 0 82px;      /* fixed 82px — sprites are 12 chars × 6px = 72px + breathing room */
-  width: 82px;
-  max-width: 82px;
-  height: 60px; /* 5 lines × 12px — fixed so bio row never shifts height between frames */
+  flex: 0 0 78px;      /* fixed 78px — sprites are 12 chars × 5.4px = ~65px + breathing room */
+  width: 78px;
+  max-width: 78px;
+  height: 54px; /* 5 lines × 10.8px — breathing room so tall sprites don't feel crammed */
   overflow: hidden;
   position: relative; /* anchor for oracle-view-btn */
 }
 
 .vexil-ascii-art {
-  font-family: var(--font); /* ui-monospace/SF Mono — consistent 6px/char at 10px, avoids Courier drift */
-  font-size: 10px;
+  font-family: var(--font); /* ui-monospace/SF Mono — consistent char width, avoids Courier drift */
+  font-size: 9px;
   line-height: 1.2;
   color: var(--companion-hue, #d87756);
   margin: 0;
