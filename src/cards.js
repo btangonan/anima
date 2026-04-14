@@ -255,15 +255,6 @@ export function showOracleCard(buddy) {
   rerollOracleSlot.appendChild(rerollOracleBtn);
   footer.appendChild(rerollOracleSlot);
 
-  // Thinking sway animation — fires when oracle:query is in flight
-  if (document.body.dataset.oracleThinking) spritePre.classList.add('thinking');
-  const onThinking = () => spritePre.classList.add('thinking');
-  const onIdle     = () => spritePre.classList.remove('thinking');
-  document.addEventListener('oracle:thinking', onThinking);
-  document.addEventListener('oracle:idle',     onIdle);
-  overlay._thinkingHandler = onThinking;
-  overlay._idleHandler     = onIdle;
-
   document.body.appendChild(overlay);
   _oracleCardEl = overlay;
 
@@ -271,6 +262,8 @@ export function showOracleCard(buddy) {
   _oracleAnimId = setInterval(() => {
     frame = (frame + 1) % 3;
     spritePre.textContent = renderFrame(species, frame, eye, hat).join('\n');
+    // Poll thinking state every frame — no event race, works regardless of open/send order
+    spritePre.classList.toggle('thinking', !!document.body.dataset.oracleThinking);
   }, 500);
 
   document.addEventListener('keydown', onKey);
@@ -279,9 +272,7 @@ export function showOracleCard(buddy) {
 
 export function hideOracleCard() {
   if (_oracleCardEl) {
-    if (_oracleCardEl._keyHandler)      document.removeEventListener('keydown',         _oracleCardEl._keyHandler);
-    if (_oracleCardEl._thinkingHandler) document.removeEventListener('oracle:thinking', _oracleCardEl._thinkingHandler);
-    if (_oracleCardEl._idleHandler)     document.removeEventListener('oracle:idle',     _oracleCardEl._idleHandler);
+    if (_oracleCardEl._keyHandler) document.removeEventListener('keydown', _oracleCardEl._keyHandler);
     _oracleCardEl.remove();
     _oracleCardEl = null;
   }
