@@ -963,6 +963,13 @@ mod tests {
 mod tempdir_lite {
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    // Monotonic counter — guarantees uniqueness even when two parallel
+    // threads observe the same SystemTime::now().as_nanos() value (clock
+    // granularity race). Without this, 1-in-N storage/audit tests flake
+    // because they share a tempdir and contaminate each other's fixtures.
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
 
     pub struct TempDir(PathBuf);
 
@@ -974,7 +981,8 @@ mod tempdir_lite {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos())
                 .unwrap_or(0);
-            let path = base.join(format!("animagate-test-{}-{}", pid, nonce));
+            let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = base.join(format!("animagate-test-{}-{}-{}", pid, nonce, seq));
             fs::create_dir_all(&path).expect("create temp dir");
             TempDir(path)
         }

@@ -194,6 +194,11 @@ mod tests {
     use std::path::PathBuf;
 
     // Reuse the tiny temp-dir helper style from mcp_gate::tests.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    // Monotonic counter — guarantees parallel-safe tempdir uniqueness even
+    // when two threads observe the same nanos (clock granularity race).
+    static TEMPDIR_SEQ: AtomicU64 = AtomicU64::new(0);
+
     struct TempDir(PathBuf);
     impl TempDir {
         fn new() -> Self {
@@ -201,7 +206,8 @@ mod tests {
             let pid = std::process::id();
             let nonce: u128 = SystemTime::now()
                 .duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-            let p = base.join(format!("animastorage-test-{}-{}", pid, nonce));
+            let seq = TEMPDIR_SEQ.fetch_add(1, Ordering::Relaxed);
+            let p = base.join(format!("animastorage-test-{}-{}-{}", pid, nonce, seq));
             fs::create_dir_all(&p).unwrap();
             TempDir(p)
         }
