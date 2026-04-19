@@ -69,6 +69,19 @@ window.addEventListener('DOMContentLoaded', async () => {
   initAttachments({ getActiveSessionId });
   initHistory();
 
+  // P2.A — load persisted ANIMA_PERMISSION_MODE (bypass|default|gated). Defaults to bypass
+  // until P2.G validation completes; P2.H settings UI writes this file.
+  try {
+    const { invoke } = window.__TAURI__.core;
+    const raw = await invoke('read_file_as_text', {
+      path: '~/.config/pixel-terminal/settings.json',
+    });
+    const cfg = JSON.parse(raw || '{}');
+    if (cfg && typeof cfg.permissionMode === 'string') {
+      window.__ANIMA_PERMISSION_MODE__ = cfg.permissionMode;
+    }
+  } catch { /* no settings file yet — bypass remains the default */ }
+
   // Sync buddy.json from ~/.claude.json before companion loads so the companion
   // reads up-to-date species/rarity/stats on first render (replaces bun sync_real_buddy.ts)
   try {

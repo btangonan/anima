@@ -12,6 +12,7 @@ use commands::history::{load_session_history, scan_session_history};
 use commands::companion::{sync_buddy, reroll_oracle};
 use commands::daemon::{start_daemon, DaemonShared};
 use commands::oracle::oracle_query;
+use commands::mcp_config_writer::write_mcp_config;
 use commands::misc::{js_log, read_slash_command_content, read_slash_commands};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -97,7 +98,8 @@ pub fn run() {
             append_line_to_file,
             sync_buddy,
             reroll_oracle,
-            oracle_query
+            oracle_query,
+            write_mcp_config
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

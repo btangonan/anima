@@ -44,7 +44,7 @@ export function setLifecycleDeps(deps) {
 }
 
 
-function createSession(cwd, opts = {}) {
+async function createSession(cwd, opts = {}) {
   const id   = crypto.randomUUID();
   const name = cwd ? cwd.split('/').pop() || cwd : 'untitled';
 
@@ -77,6 +77,24 @@ function createSession(cwd, opts = {}) {
   sessions.set(id, session);
   initAttachmentSession(id);
 
+  // Pre-load last-known context % from project-scoped file so the bar is non-zero
+  // on the FIRST card render (before system.init fires, before any chat).
+  if (cwd) {
+    const encoded = cwd.replace(/^\//, '').replace(/\//g, '-');
+    try {
+      const raw = await window.__TAURI__?.core?.invoke('read_file_as_text', {
+        path: `~/.local/share/pixel-terminal/projects/-${encoded}/last_context.json`
+      });
+      if (raw) {
+        const sb = JSON.parse(raw);
+        if (typeof sb.pct === 'number') {
+          session._authoritativePct = sb.pct;
+          if (sb.window) session._contextWindow = sb.window;
+        }
+      }
+    } catch { /* file absent on first-ever project launch — bar starts blank, fills after turn 1 */ }
+  }
+
   _deps.renderSessionCard(id);
   _deps.setActiveSession(id);
   const modeLabel = opts.readOnly ? ' (read-only)' : '';
@@ -99,16 +117,45 @@ async function spawnClaude(id) {
   loadSlashCommands().catch(e => pxLog('WARN', 'slash cmd load: ' + e));
   pxLog('SPAWN', `id:${id.slice(0,8)} cwd:${s.cwd} model:${s._modelOverride||'default'} effort:${s._effortOverride||'default'} continue:${!!s._interrupted}`);
   try {
-    // v0.1: bypassPermissions — no MCP gate needed, works on any machine.
-    // v0.2 TODO: add MCP permission gate (anima_gate.py) with Tauri resource bundling.
+    // ANIMA_PERMISSION_MODE selects the permission strategy:
+    //   bypass (default) — --permission-mode bypassPermissions (current shipped behavior)
+    //   gated            — --strict-mcp-config + per-session MCP gate via
+    //                      --permission-prompt-tool mcp__anima_<sid8>__approve (P2.A)
+    //   default          — falls through to bypass (P2.H flips the default after P2.G validation)
+    const permissionMode = (window.__ANIMA_PERMISSION_MODE__ || 'bypass').toLowerCase();
+
     const claudeArgs = [
       '-p',
       '--input-format',  'stream-json',
       '--output-format', 'stream-json',
       '--verbose',
       '--include-hook-events',
-      '--permission-mode', 'bypassPermissions',
     ];
+
+    if (permissionMode === 'gated') {
+      let home = await window.__TAURI__.path.homeDir();
+      if (!home.endsWith('/')) home += '/';
+      const gatePath = `${home}Projects/pixel-terminal/src-tauri/mcp/anima_gate.py`;
+      try {
+        const info = await invoke('write_mcp_config', {
+          sessionId: id,
+          gateCommand: 'python3',
+          gateArgs: [gatePath],
+        });
+        claudeArgs.push(
+          '--permission-mode', 'default',
+          '--strict-mcp-config',
+          '--mcp-config', info.path,
+          '--permission-prompt-tool', info.toolFlag,
+        );
+        pxLog('P2A', `gated id:${id.slice(0,8)} flag=${info.toolFlag}`);
+      } catch (err) {
+        pxLog('P2A', `write_mcp_config failed — falling back to bypass: ${err}`);
+        claudeArgs.push('--permission-mode', 'bypassPermissions');
+      }
+    } else {
+      claudeArgs.push('--permission-mode', 'bypassPermissions');
+    }
     // Inject compaction-resilience guidance (helps Claude recover after context compression)
     // TODO: bundle as Tauri resource for distribution (currently uses home dir path)
     let home = await window.__TAURI__.path.homeDir();
