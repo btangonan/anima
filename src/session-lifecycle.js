@@ -124,6 +124,25 @@ async function spawnClaude(id) {
     //   default          — falls through to bypass (P2.H flips the default after P2.G validation)
     const permissionMode = (window.__ANIMA_PERMISSION_MODE__ || 'bypass').toLowerCase();
 
+    // P2.G — fail-closed supervisor. Before spawning in `gated` mode, check
+    // whether the circuit breaker has tripped for this session (≥3 gate
+    // crashes in the last 60s). If open, downshift to `--permission-mode
+    // default` — NOT bypassPermissions. User must explicitly re-opt into
+    // gated after fixing the underlying gate fault.
+    let circuitOpen = false;
+    let backoffMs = 0;
+    if (permissionMode === 'gated') {
+      try {
+        const snap = await invoke('supervisor_circuit_state', { sessionId: id });
+        circuitOpen = !!snap?.open;
+        backoffMs = Math.max(0, snap?.backoffMs ?? 0);
+      } catch (_) { /* missing state = closed */ }
+    }
+    if (backoffMs > 0) {
+      pxLog('P2G', `id:${id.slice(0,8)} supervisor backoff ${backoffMs}ms before respawn`);
+      await new Promise(r => setTimeout(r, backoffMs));
+    }
+
     const claudeArgs = [
       '-p',
       '--input-format',  'stream-json',
@@ -132,7 +151,12 @@ async function spawnClaude(id) {
       '--include-hook-events',
     ];
 
-    if (permissionMode === 'gated') {
+    // Record which permission strategy this spawn actually used so the close
+    // handler can attribute crashes correctly (only gated-mode crashes feed
+    // the circuit breaker).
+    let spawnMode = 'bypass';
+
+    if (permissionMode === 'gated' && !circuitOpen) {
       try {
         const bin = await invoke('resolve_gate_binary');
         const info = await invoke('write_mcp_config', {
@@ -146,14 +170,26 @@ async function spawnClaude(id) {
           '--mcp-config', info.path,
           '--permission-prompt-tool', info.toolFlag,
         );
+        spawnMode = 'gated';
         pxLog('P2A', `gated id:${id.slice(0,8)} flag=${info.toolFlag} engine=${bin.engine}`);
       } catch (err) {
         pxLog('P2A', `gate setup failed — falling back to bypass: ${err}`);
         claudeArgs.push('--permission-mode', 'bypassPermissions');
       }
+    } else if (permissionMode === 'gated' && circuitOpen) {
+      // Fail-closed fallback: CLI prompts instead of MCP gate. Red banner
+      // tells the user why every tool call is now asking in-terminal.
+      claudeArgs.push('--permission-mode', 'default');
+      spawnMode = 'degraded';
+      pxLog('P2G', `id:${id.slice(0,8)} circuit OPEN — downshift to --permission-mode default`);
+      _deps.pushMessage(id, {
+        type: 'error',
+        text: 'permission gate degraded; running in CLI default-prompt mode — every tool will prompt in CLI. Re-enable gated mode from Settings after investigating the gate fault.',
+      });
     } else {
       claudeArgs.push('--permission-mode', 'bypassPermissions');
     }
+    s._spawnMode = spawnMode;
     // Inject compaction-resilience guidance (helps Claude recover after context compression)
     // TODO: bundle as Tauri resource for distribution (currently uses home dir path)
     let home = await window.__TAURI__.path.homeDir();
@@ -195,7 +231,16 @@ async function spawnClaude(id) {
       }
       s.child = null;
       if (code !== 0 && !s._manualClose) {
-        pxLog('CRASH', `id:${id.slice(0,8)} exit:${code} — restarting`);
+        pxLog('CRASH', `id:${id.slice(0,8)} exit:${code} mode:${s._spawnMode} — restarting`);
+        // P2.G — only gated-mode crashes count toward the gate-circuit breaker.
+        // Bypass/degraded crashes are unrelated to the MCP gate lifecycle.
+        if (s._spawnMode === 'gated') {
+          invoke('supervisor_record_gate_crash', { sessionId: id })
+            .then((snap) => {
+              pxLog('P2G', `id:${id.slice(0,8)} crashes=${snap?.crashes ?? '?'} open=${!!snap?.open}`);
+            })
+            .catch((e) => pxLog('WARN', `supervisor_record_gate_crash failed: ${e}`));
+        }
         s._interrupted = true;
         _deps.pushMessage(id, { type: 'system-msg', text: `Process crashed (exit ${code}) \u2014 restarting\u2026` });
         spawnClaude(id);

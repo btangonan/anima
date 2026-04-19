@@ -1,0 +1,6 @@
+Allow Claude to use Bash? (y/n)
+Allow Claude to use Read? (y/n)
+Allow Claude to use Write? (y/n)
+Allow Claude to use Edit? (y/n)
+Allow Claude to use mcp__anima_a1b2c3d4__approve? (y/n)
+Allow Claude to change permission-mode to acceptEdits? (y/n)

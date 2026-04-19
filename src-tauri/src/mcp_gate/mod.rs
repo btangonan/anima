@@ -17,6 +17,7 @@
 
 pub mod audit;
 pub mod storage;
+pub mod supervisor;
 
 use audit::AuditCtx;
 

@@ -15,6 +15,8 @@ use commands::daemon::{start_daemon, DaemonShared};
 use commands::oracle::oracle_query;
 use commands::mcp_config_writer::{resolve_gate_binary, write_mcp_config};
 use commands::misc::{js_log, read_slash_command_content, read_slash_commands};
+use commands::supervisor::{supervisor_circuit_state, supervisor_record_gate_crash, supervisor_reset};
+use mcp_gate::supervisor::SupervisorState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,6 +30,9 @@ pub fn run() {
             let daemon_shared = DaemonShared::new();
             app.manage(daemon_shared.clone());
             start_daemon(daemon_shared);
+
+            // P2.G — supervisor state for MCP-gate crash tracking (circuit breaker).
+            app.manage(SupervisorState::default());
 
             ws_bridge::init(app)?;
 
@@ -101,7 +106,10 @@ pub fn run() {
             reroll_oracle,
             oracle_query,
             write_mcp_config,
-            resolve_gate_binary
+            resolve_gate_binary,
+            supervisor_record_gate_crash,
+            supervisor_circuit_state,
+            supervisor_reset
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

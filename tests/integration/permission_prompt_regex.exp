@@ -1,0 +1,72 @@
+#!/usr/bin/env expect
+# P2.G2 Tcl engine fixture runner.
+#
+# Loads tests/fixtures/permission_prompts_v1.txt and asserts every line matches
+# at least one of the four positive-match alternates used by the PTY harness
+# (default_mode_prompts.exp) — under Tcl regex semantics (\m...\M word
+# boundaries), NOT JS (\b).
+#
+# v10 fix: JS \b is not a word boundary in Tcl. `regexp {\bBash\b} {Allow ...
+# Bash? (y/n)}` returns 0; `regexp {\mBash\M} {...}` returns 1. This runner is
+# what catches drift between the PTY regex and the fixture under the Tcl
+# engine — the JS runner alone is not sufficient.
+#
+# Exit 0 = all fixture lines match ≥1 alternate.
+# Exit 1 = at least one line matched zero alternates — failing line(s) printed.
+# Exit 77 = defensive; expect binary not installed (wrapper preflight catches
+#           this first — this in-script check should be unreachable post-preflight).
+
+if {[catch {exec which expect}]} {
+    puts "SKIP: expect not installed"
+    exit 77
+}
+
+set script_dir [file dirname [info script]]
+set fixture_path [file join $script_dir ".." "fixtures" "permission_prompts_v1.txt"]
+
+if {![file exists $fixture_path]} {
+    puts "FAIL: fixture not found at $fixture_path"
+    exit 1
+}
+
+set fh [open $fixture_path r]
+set contents [read $fh]
+close $fh
+
+# Tcl-compatible positive-match alternates. These MUST mirror the four
+# alternates in default_mode_prompts.exp verbatim — any change here requires
+# the identical change in the PTY harness.
+set alt1 {Allow [^\n]*\m(Bash|Read|Write|Edit|mcp__[A-Za-z0-9_]+__[A-Za-z0-9_]+)\M[^\n]*\?\s*\(y/n\)}
+set alt2 {(?i)allow .{0,40}\m(bash|read|write|edit|mcp__[a-z0-9_]+__[a-z0-9_]+)\M[^\n]{0,80}\(y/n\)}
+set alt3 {(?i)approve.{0,40}\m(bash|read|write|edit|mcp__[a-z0-9_]+__[a-z0-9_]+)\M[^\n]{0,80}\(y/n\)}
+set alt4 {(?i)allow .{0,40}permission[- ]mode[^\n]{0,80}\(y/n\)}
+
+set unmatched [list]
+set total 0
+foreach line [split $contents "\n"] {
+    set line [string trim $line]
+    if {[string length $line] == 0} { continue }
+    incr total
+    set hit 0
+    foreach re [list $alt1 $alt2 $alt3 $alt4] {
+        if {[regexp -- $re $line]} {
+            set hit 1
+            break
+        }
+    }
+    if {!$hit} { lappend unmatched $line }
+}
+
+if {$total == 0} {
+    puts "FAIL: fixture had zero non-empty lines"
+    exit 1
+}
+
+if {[llength $unmatched] > 0} {
+    puts "FAIL: [llength $unmatched]/$total fixture line(s) matched zero Tcl alternates:"
+    foreach line $unmatched { puts "  $line" }
+    exit 1
+}
+
+puts "PASS: $total/$total fixture lines matched at least one Tcl alternate"
+exit 0

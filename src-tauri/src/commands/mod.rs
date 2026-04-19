@@ -7,3 +7,4 @@ pub mod mcp_config_writer;
 pub mod misc;
 pub mod oracle;
 pub mod patterns;
+pub mod supervisor;

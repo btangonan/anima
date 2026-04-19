@@ -1,0 +1,83 @@
+#!/usr/bin/env expect
+# P2.G — PTY harness for `claude --permission-mode default` prompt verification.
+#
+# Proof-of-life for the fail-closed fallback: when the MCP gate is degraded and
+# the supervisor downshifts to `--permission-mode default`, the CLI must emit a
+# textual prompt on the tty for every tool call. That prompt is the sound
+# audit surface (stdout stream-json does NOT emit permission events — see
+# docs/ROADMAP-v0.2.md:112-114).
+#
+# Behavior:
+#   (a) 30 s hard timeout per expect block.
+#   (b) transcript written to ~/.local/share/pixel-terminal/test-runs/<unix_ts>/pty.log
+#   (c) defensive `which expect` check — unreachable post Node-side preflight.
+#   (d) spawn: claude --permission-mode default --print -p "use the Bash tool to run: ls /tmp"
+#   (e) expect block with the four v10 Tcl-compatible positive-match alternates
+#       (\m...\M word boundaries — JS-style \b does NOT work in Tcl).
+#       All alternates send "n\r" to deny, loop via exp_continue; on seeing the
+#       deny echo, exit 0.
+#   (f) timeout or eof → fail.
+#
+# Exit codes (consumed by the vitest wrapper):
+#   0  = prompt observed + denied successfully
+#   1  = no prompt within timeout, or eof before prompting
+#   77 = defensive skip (expect binary missing) — preflight catches first.
+
+set timeout 30
+
+if {[catch {exec which expect}]} {
+    puts "SKIP: expect not installed"
+    exit 77
+}
+
+# Transcript for postmortem
+set run_ts [clock seconds]
+set transcript_dir "$env(HOME)/.local/share/pixel-terminal/test-runs/$run_ts"
+file mkdir $transcript_dir
+set transcript_path "$transcript_dir/pty.log"
+log_file -a $transcript_path
+puts "transcript: $transcript_path"
+
+# Spawn claude in default permission mode with a prompt that forces a tool call.
+# --print mode so it exits after one turn; --permission-mode default so every
+# tool ask triggers the CLI prompt (NOT bypassPermissions, NOT gated).
+if {[catch {exec which claude}]} {
+    puts "SKIP: claude CLI not installed"
+    exit 77
+}
+
+spawn claude --permission-mode default --print -p "use the Bash tool to run: ls /tmp"
+
+# Four Tcl-compatible positive-match alternates, verbatim mirror of the ones
+# asserted by permission_prompt_regex.exp / .test.js. Any change here must
+# update those runners in the same commit.
+expect {
+    -re {Allow [^\n]*\m(Bash|Read|Write|Edit|mcp__[A-Za-z0-9_]+__[A-Za-z0-9_]+)\M[^\n]*\?\s*\(y/n\)} {
+        send "n\r"
+        exp_continue
+    }
+    -re {(?i)allow .{0,40}\m(bash|read|write|edit|mcp__[a-z0-9_]+__[a-z0-9_]+)\M[^\n]{0,80}\(y/n\)} {
+        send "n\r"
+        exp_continue
+    }
+    -re {(?i)approve.{0,40}\m(bash|read|write|edit|mcp__[a-z0-9_]+__[a-z0-9_]+)\M[^\n]{0,80}\(y/n\)} {
+        send "n\r"
+        exp_continue
+    }
+    -re {(?i)allow .{0,40}permission[- ]mode[^\n]{0,80}\(y/n\)} {
+        send "n\r"
+        exp_continue
+    }
+    -re {[Pp]ermission.*deny|[Tt]ool.*denied|[Cc]ancelled|[Dd]enied by user} {
+        puts "PASS: prompt observed and denied"
+        exit 0
+    }
+    timeout {
+        puts "FAIL: no permission prompt within 30s"
+        exit 1
+    }
+    eof {
+        puts "FAIL: claude exited without prompting"
+        exit 1
+    }
+}
