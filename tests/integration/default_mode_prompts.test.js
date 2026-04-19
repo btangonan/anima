@@ -13,6 +13,12 @@ const SCRIPT = resolve(__dirname, 'default_mode_prompts.exp');
 // as skipped rather than failed). The in-script checks inside .exp are
 // defensive only; they cannot fire if the `expect` interpreter itself is
 // missing (can't start the script to run them).
+//
+// Environment caveat: claude's PreToolUse hooks fire BEFORE the CLI's own
+// permission prompt. If $HOME/.claude/settings.json declares a PreToolUse
+// hook matching Bash, the harness will see claude exit without prompting.
+// The .exp script detects this and exits 77 (skip). For a release-gate
+// smoke, run in an isolated $HOME.
 
 function hasBinary(name) {
   if (existsSync(`/usr/bin/${name}`)) return true;
@@ -25,13 +31,25 @@ function hasBinary(name) {
   }
 }
 
+function hasHostBashHooks() {
+  const settingsPath = `${process.env.HOME || ''}/.claude/settings.json`;
+  if (!existsSync(settingsPath)) return false;
+  try {
+    const raw = execSync(`cat ${JSON.stringify(settingsPath)}`, { encoding: 'utf8' });
+    return /"PreToolUse"/.test(raw) && /Bash/.test(raw);
+  } catch {
+    return false;
+  }
+}
+
 const HAS_EXPECT = hasBinary('expect');
 const HAS_CLAUDE = hasBinary('claude');
+const HAS_HOST_HOOKS = hasHostBashHooks();
 // Opt-in: spawning claude costs API credits + ~30s per run. Unit test runs
 // (`npm test`) should skip by default. Set ANIMA_RUN_PTY_TESTS=1 locally
 // before running this specific file (e.g. P2.G grading, release gate).
 const OPTED_IN = process.env.ANIMA_RUN_PTY_TESTS === '1';
-const RUNNABLE = OPTED_IN && HAS_EXPECT && HAS_CLAUDE;
+const RUNNABLE = OPTED_IN && HAS_EXPECT && HAS_CLAUDE && !HAS_HOST_HOOKS;
 
 // P2.G acceptance #6 depends on the P2.G2 fixture runners passing first (JS
 // engine AND Tcl engine). The vitest runner will naturally schedule them
@@ -63,11 +81,15 @@ test.skipIf(!RUNNABLE)(
 );
 
 test.skipIf(RUNNABLE)(
-  'default-mode PTY harness skipped (set ANIMA_RUN_PTY_TESTS=1 to enable; requires expect + claude)',
+  'default-mode PTY harness skipped (set ANIMA_RUN_PTY_TESTS=1 to enable; requires expect + claude; host PreToolUse hooks block it)',
   () => {
     expect(RUNNABLE).toBe(false);
     if (!OPTED_IN) console.warn('ANIMA_RUN_PTY_TESTS not set — PTY harness opt-in required (costs API credits).');
     if (!HAS_EXPECT) console.warn('expect binary missing — install via `brew install expect`');
     if (!HAS_CLAUDE) console.warn('claude CLI missing — install via `npm i -g @anthropic-ai/claude-code`');
+    if (HAS_HOST_HOOKS) console.warn(
+      'host $HOME/.claude/settings.json declares PreToolUse hooks matching Bash — they will intercept ' +
+      'before the CLI prompt fires. Run from an isolated $HOME to exercise this harness (release-gate only).'
+    );
   },
 );

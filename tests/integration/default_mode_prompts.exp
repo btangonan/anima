@@ -21,13 +21,40 @@
 # Exit codes (consumed by the vitest wrapper):
 #   0  = prompt observed + denied successfully
 #   1  = no prompt within timeout, or eof before prompting
-#   77 = defensive skip (expect binary missing) — preflight catches first.
+#   77 = defensive skip (expect binary missing, or host has PreToolUse
+#        hooks that intercept Bash before claude's CLI permission UX)
+#
+# Environment requirement: claude's PreToolUse hooks run BEFORE the CLI
+# permission prompt. If the host's $HOME/.claude/settings.json declares a
+# PreToolUse hook matching Bash (e.g. gate-deny.sh, pixel_gate.py),
+# claude auto-responds deny/defer from the hook and NEVER emits the
+# `(y/n)` prompt this harness asserts on. That's a host config, not a
+# regression — skip instead of false-failing. Release-gate invocations
+# should run with an isolated $HOME (tempdir with credentials but no
+# settings.json hooks).
 
 set timeout 30
 
 if {[catch {exec which expect}]} {
     puts "SKIP: expect not installed"
     exit 77
+}
+
+# Detect PreToolUse hooks on Bash in $HOME/.claude/settings.json. If any
+# exist, the harness cannot observe the CLI prompt — skip loudly.
+set settings_path "$env(HOME)/.claude/settings.json"
+if {[file exists $settings_path]} {
+    set fh [open $settings_path r]
+    set settings_raw [read $fh]
+    close $fh
+    # Crude match — we don't parse JSON in Tcl. PreToolUse + Bash on same
+    # file is enough signal that hooks will intercept.
+    if {[regexp {"PreToolUse"} $settings_raw] && [regexp {Bash} $settings_raw]} {
+        puts "SKIP: host \$HOME/.claude/settings.json has PreToolUse hooks"
+        puts "      matching Bash — they will intercept before the CLI prompt"
+        puts "      fires. Run from an isolated \$HOME to exercise this harness."
+        exit 77
+    }
 }
 
 # Transcript for postmortem
