@@ -289,4 +289,122 @@ mod tests {
         s.reset("sess");
         assert!(!s.snapshot("sess", 1002).open);
     }
+
+    // ── Concurrent multi-session isolation tests (§4 verification) ──────────
+    //
+    // Anima runs multiple claude sessions simultaneously. The supervisor's
+    // Mutex<HashMap<String, CrashTracker>> must serialize all access correctly
+    // so one session's crash flurry never spills into another, and parallel
+    // writes to the same session never drop updates.
+
+    use std::sync::Arc;
+    use std::thread;
+
+    #[test]
+    fn concurrent_writes_to_distinct_sessions_do_not_bleed() {
+        let s = Arc::new(SupervisorState::default());
+        let mut handles = Vec::new();
+
+        // 20 threads, each owning its own session_id, each recording 10 crashes.
+        for session_idx in 0..20 {
+            let s = Arc::clone(&s);
+            handles.push(thread::spawn(move || {
+                let sid = format!("sess-{session_idx}");
+                // All crashes at t=1000 so window math is deterministic.
+                for _ in 0..10 {
+                    s.record_crash(&sid, 1000);
+                }
+            }));
+        }
+        for h in handles {
+            h.join().expect("thread panicked");
+        }
+
+        // Every session should have exactly 10 crashes — no cross-session bleed.
+        for session_idx in 0..20 {
+            let sid = format!("sess-{session_idx}");
+            let snap = s.snapshot(&sid, 1000);
+            assert_eq!(
+                snap.crashes, 10,
+                "session {sid} saw {} crashes, expected 10", snap.crashes
+            );
+            assert!(snap.open, "session {sid} should be open (10 crashes ≥ threshold)");
+        }
+    }
+
+    #[test]
+    fn concurrent_writes_to_same_session_record_every_crash() {
+        let s = Arc::new(SupervisorState::default());
+        let mut handles = Vec::new();
+
+        // 10 threads hammering the same session — every crash must land.
+        // 10 × 50 = 500 total writes. No lost updates allowed.
+        for _ in 0..10 {
+            let s = Arc::clone(&s);
+            handles.push(thread::spawn(move || {
+                for _ in 0..50 {
+                    s.record_crash("hot-session", 1000);
+                }
+            }));
+        }
+        for h in handles {
+            h.join().expect("thread panicked");
+        }
+
+        let snap = s.snapshot("hot-session", 1000);
+        assert_eq!(
+            snap.crashes, 500,
+            "expected exactly 500 crashes (no lost updates), got {}", snap.crashes
+        );
+    }
+
+    #[test]
+    fn concurrent_reads_during_writes_never_panic_and_see_monotonic_counts() {
+        let s = Arc::new(SupervisorState::default());
+        let writer = {
+            let s = Arc::clone(&s);
+            thread::spawn(move || {
+                for i in 0..200 {
+                    s.record_crash("race", 1000 + i % 10);
+                }
+            })
+        };
+        let reader = {
+            let s = Arc::clone(&s);
+            thread::spawn(move || {
+                let mut last = 0usize;
+                for _ in 0..500 {
+                    let snap = s.snapshot("race", 1010);
+                    assert!(snap.crashes >= last, "crash count went backwards");
+                    last = snap.crashes;
+                }
+                last
+            })
+        };
+        writer.join().expect("writer panicked");
+        let final_reads = reader.join().expect("reader panicked");
+        let snap = s.snapshot("race", 1010);
+        // Writer recorded 200, all inside the window (1000..1010 ≤ 60s window at t=1010).
+        assert_eq!(snap.crashes, 200);
+        assert!(final_reads <= 200);
+    }
+
+    #[test]
+    fn reset_of_one_session_does_not_touch_others() {
+        let s = SupervisorState::default();
+        s.record_crash("a", 1000);
+        s.record_crash("a", 1001);
+        s.record_crash("a", 1002);
+        s.record_crash("b", 1000);
+        s.record_crash("b", 1001);
+        s.record_crash("b", 1002);
+        assert!(s.snapshot("a", 1002).open);
+        assert!(s.snapshot("b", 1002).open);
+
+        s.reset("a");
+
+        assert!(!s.snapshot("a", 1002).open, "a should be reset");
+        assert!(s.snapshot("b", 1002).open, "b must stay open — reset is per-session");
+        assert_eq!(s.snapshot("b", 1002).crashes, 3);
+    }
 }
