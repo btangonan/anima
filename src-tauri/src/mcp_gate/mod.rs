@@ -15,7 +15,10 @@
 //! the request file. On a `{approved:true, action:"allow_always"}` response
 //! we persist a grant before replying allow.
 
+pub mod audit;
 pub mod storage;
+
+use audit::AuditCtx;
 
 use serde_json::{json, Value};
 use std::fs;
@@ -140,12 +143,14 @@ pub fn handle_permission<W: Write>(
     msg_id: &Value,
     arguments: &Value,
     paths: &GatePaths,
+    audit_ctx: Option<&AuditCtx>,
     poll_ms: u64,
     timeout_s: u64,
 ) -> std::io::Result<()> {
     let tool_name = arguments.get("tool_name").and_then(|v| v.as_str()).unwrap_or("unknown");
     let tool_input = arguments.get("input").cloned().unwrap_or(json!({}));
     let display = display_for(tool_name, &tool_input);
+    let fp = storage::fingerprint(&tool_input);
 
     // P2.E: persistent "allow always" short-circuit. Runs BEFORE the alive
     // check on purpose — a user-approved entry should keep working even if
@@ -153,10 +158,16 @@ pub fn handle_permission<W: Write>(
     // A corrupt or unreadable permissions file returns an empty store;
     // `is_allowed` then returns false and we fall through to the UI path.
     if storage::is_allowed_on_disk(&paths.permissions, tool_name, &tool_input) {
+        if let Some(ctx) = audit_ctx {
+            audit::append_decision(ctx, tool_name, &fp, &display, "allow", "persisted_allow");
+        }
         return send(writer, build_allow(msg_id, &tool_input));
     }
 
     if !is_terminal_alive(paths) {
+        if let Some(ctx) = audit_ctx {
+            audit::append_decision(ctx, tool_name, &fp, &display, "deny", "terminal_not_alive");
+        }
         return send(writer, build_deny(msg_id, "Anima UI not available for approval"));
     }
 
@@ -190,18 +201,43 @@ pub fn handle_permission<W: Write>(
                     eprintln!("mcp_gate: grant_on_disk failed: {}", e);
                 }
             }
+            if let Some(ctx) = audit_ctx {
+                let reason = match action {
+                    "allow_always" => "user_allow_always",
+                    _              => "user_allow_once",
+                };
+                audit::append_decision(ctx, tool_name, &fp, &display, "allow", reason);
+            }
             return send(writer, build_allow(msg_id, &tool_input));
         } else {
+            if let Some(ctx) = audit_ctx {
+                let reason = match action {
+                    "deny_pause" => "user_deny_pause",
+                    _            => "user_deny",
+                };
+                audit::append_decision(ctx, tool_name, &fp, &display, "deny", reason);
+            }
             return send(writer, build_deny(msg_id, "User denied"));
         }
     }
 
     let _ = fs::remove_file(&paths.request);
+    if let Some(ctx) = audit_ctx {
+        audit::append_decision(ctx, tool_name, &fp, &display, "deny", "timeout");
+    }
     send(writer, build_deny(msg_id, &format!("Approval timeout after {}s", timeout_s)))
 }
 
 /// Full MCP server loop. Reads NDJSON JSON-RPC from reader, writes to writer.
-pub fn run<R: Read, W: Write>(reader: R, mut writer: W, paths: &GatePaths) -> std::io::Result<()> {
+/// `audit_ctx: None` disables the audit log — used by tests that only need
+/// protocol-level assertions. Production (`anima_gate.rs` binary) always
+/// passes `Some(&AuditCtx)` built from env so every decision is logged.
+pub fn run<R: Read, W: Write>(
+    reader: R,
+    mut writer: W,
+    paths: &GatePaths,
+    audit_ctx: Option<&AuditCtx>,
+) -> std::io::Result<()> {
     let reader = BufReader::new(reader);
     for line in reader.lines() {
         let line = match line {
@@ -254,7 +290,7 @@ pub fn run<R: Read, W: Write>(reader: R, mut writer: W, paths: &GatePaths) -> st
             }
             "tools/call" => {
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
-                handle_permission(&mut writer, &msg_id, &args, paths, POLL_MS, TIMEOUT_S)?;
+                handle_permission(&mut writer, &msg_id, &args, paths, audit_ctx, POLL_MS, TIMEOUT_S)?;
             }
             _ => {
                 if !msg_id.is_null() {
@@ -274,6 +310,7 @@ pub fn run<R: Read, W: Write>(reader: R, mut writer: W, paths: &GatePaths) -> st
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::path::Path;
 
     fn tmp_paths() -> (tempdir_lite::TempDir, GatePaths) {
         let dir = tempdir_lite::TempDir::new();
@@ -353,7 +390,7 @@ mod tests {
         let (_dir, paths) = tmp_paths();
         let input = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#.to_string() + "\n";
         let mut out = Vec::new();
-        run(Cursor::new(input), &mut out, &paths).unwrap();
+        run(Cursor::new(input), &mut out, &paths, None).unwrap();
         let text = String::from_utf8(out).unwrap();
         let resp: Value = serde_json::from_str(text.trim()).unwrap();
         assert_eq!(resp["jsonrpc"], "2.0");
@@ -367,7 +404,7 @@ mod tests {
         let (_dir, paths) = tmp_paths();
         let input = r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#.to_string() + "\n";
         let mut out = Vec::new();
-        run(Cursor::new(input), &mut out, &paths).unwrap();
+        run(Cursor::new(input), &mut out, &paths, None).unwrap();
         let text = String::from_utf8(out).unwrap();
         let resp: Value = serde_json::from_str(text.trim()).unwrap();
         let tools = resp["result"]["tools"].as_array().unwrap();
@@ -385,7 +422,7 @@ mod tests {
             r#"{"jsonrpc":"2.0","id":7,"method":"initialize"}"#, "\n",
         ).to_string();
         let mut out = Vec::new();
-        run(Cursor::new(input), &mut out, &paths).unwrap();
+        run(Cursor::new(input), &mut out, &paths, None).unwrap();
         let text = String::from_utf8(out).unwrap();
         assert_eq!(text.lines().count(), 1);
         let resp: Value = serde_json::from_str(text.trim()).unwrap();
@@ -397,7 +434,7 @@ mod tests {
         let (_dir, paths) = tmp_paths();
         let input = r#"{"jsonrpc":"2.0","id":99,"method":"ping"}"#.to_string() + "\n";
         let mut out = Vec::new();
-        run(Cursor::new(input), &mut out, &paths).unwrap();
+        run(Cursor::new(input), &mut out, &paths, None).unwrap();
         let text = String::from_utf8(out).unwrap();
         let resp: Value = serde_json::from_str(text.trim()).unwrap();
         assert_eq!(resp["id"], 99);
@@ -409,7 +446,7 @@ mod tests {
         let (_dir, paths) = tmp_paths();
         let input = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.to_string() + "\n";
         let mut out = Vec::new();
-        run(Cursor::new(input), &mut out, &paths).unwrap();
+        run(Cursor::new(input), &mut out, &paths, None).unwrap();
         assert!(out.is_empty(), "got: {:?}", String::from_utf8(out));
     }
 
@@ -423,6 +460,7 @@ mod tests {
             &json!(1),
             &json!({ "tool_name": "Bash", "input": { "command": "ls" } }),
             &paths,
+            None,
             1, 1,
         ).unwrap();
         let text = String::from_utf8(out).unwrap();
@@ -461,6 +499,7 @@ mod tests {
             &json!(1),
             &json!({ "tool_name": "Bash", "input": { "command": "ls" } }),
             &paths,
+            None,
             20, 5,
         ).unwrap();
         ui.join().unwrap();
@@ -500,6 +539,7 @@ mod tests {
             &json!(2),
             &json!({ "tool_name": "Bash", "input": { "command": "ls" } }),
             &paths,
+            None,
             20, 5,
         ).unwrap();
         ui.join().unwrap();
@@ -523,6 +563,7 @@ mod tests {
             &json!(3),
             &json!({ "tool_name": "Bash", "input": { "command": "ls" } }),
             &paths,
+            None,
             50, 1, // 1s timeout
         ).unwrap();
         let elapsed = start.elapsed();
@@ -556,6 +597,7 @@ mod tests {
             &json!(10),
             &json!({ "tool_name": "Bash", "input": &tool_input }),
             &paths,
+            None,
             50, 1,
         ).unwrap();
 
@@ -599,6 +641,7 @@ mod tests {
             &json!(11),
             &json!({ "tool_name": "Bash", "input": &tool_input }),
             &paths,
+            None,
             20, 5,
         ).unwrap();
         ui.join().unwrap();
@@ -621,6 +664,7 @@ mod tests {
             &json!(12),
             &json!({ "tool_name": "Bash", "input": &tool_input }),
             &paths,
+            None,
             50, 1,
         ).unwrap();
         let text2 = String::from_utf8(out2).unwrap();
@@ -659,12 +703,257 @@ mod tests {
             &json!(13),
             &json!({ "tool_name": "Bash", "input": &tool_input }),
             &paths,
+            None,
             20, 5,
         ).unwrap();
         ui.join().unwrap();
 
         // Not persisted — the next call must still require UI.
         assert!(!storage::is_allowed_on_disk(&paths.permissions, "Bash", &tool_input));
+    }
+
+    // ── P2.F — audit log integration ────────────────────────────────────
+
+    fn audit_ctx_for(dir: &Path) -> AuditCtx {
+        AuditCtx {
+            session_id: "sid-test".to_string(),
+            config_path_sha256: audit::sha256_hex(b"/mock/mcp.json"),
+            pid: 99999,
+            audit_path: dir.join("permission_audit.jsonl"),
+        }
+    }
+
+    #[test]
+    fn audit_logs_persisted_allow_short_circuit() {
+        let (dir, paths) = tmp_paths();
+        let ctx = audit_ctx_for(dir.path());
+        let tool_input = json!({ "command": "ls" });
+        storage::grant_on_disk(
+            &paths.permissions, "Bash", &tool_input, storage::DEFAULT_TTL_SECS,
+        ).unwrap();
+
+        let mut out = Vec::new();
+        handle_permission(
+            &mut out,
+            &json!(20),
+            &json!({ "tool_name": "Bash", "input": &tool_input }),
+            &paths,
+            Some(&ctx),
+            50, 1,
+        ).unwrap();
+
+        let entries = audit::read_all(&ctx.audit_path);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["decision"], "allow");
+        assert_eq!(entries[0]["reason"], "persisted_allow");
+        assert_eq!(entries[0]["tool"], "Bash");
+        assert_eq!(entries[0]["session_id"], "sid-test");
+        assert_eq!(entries[0]["pid"], 99999);
+        assert_eq!(entries[0]["config_path_sha256"], audit::sha256_hex(b"/mock/mcp.json"));
+    }
+
+    #[test]
+    fn audit_logs_terminal_not_alive_deny() {
+        let (dir, paths) = tmp_paths();
+        let ctx = audit_ctx_for(dir.path());
+
+        let mut out = Vec::new();
+        handle_permission(
+            &mut out,
+            &json!(21),
+            &json!({ "tool_name": "Bash", "input": { "command": "ls" } }),
+            &paths,
+            Some(&ctx),
+            1, 1,
+        ).unwrap();
+
+        let entries = audit::read_all(&ctx.audit_path);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["decision"], "deny");
+        assert_eq!(entries[0]["reason"], "terminal_not_alive");
+    }
+
+    #[test]
+    fn audit_logs_user_allow_once_and_user_allow_always() {
+        let (dir, paths) = tmp_paths();
+        let ctx = audit_ctx_for(dir.path());
+        fs::write(&paths.alive, "x").unwrap();
+
+        // First call: allow_once (UI replies approved + action=allow_once)
+        {
+            let req_path = paths.request.clone();
+            let resp_path = paths.response.clone();
+            let ui = thread::spawn(move || {
+                for _ in 0..50 {
+                    if let Ok(raw) = fs::read_to_string(&req_path) {
+                        if let Ok(req) = serde_json::from_str::<Value>(&raw) {
+                            let id = req["id"].as_str().unwrap().to_string();
+                            fs::write(&resp_path, serde_json::to_string(&json!({
+                                "id": id, "approved": true, "action": "allow_once",
+                            })).unwrap()).unwrap();
+                            return;
+                        }
+                    }
+                    thread::sleep(Duration::from_millis(20));
+                }
+            });
+            let mut out = Vec::new();
+            handle_permission(
+                &mut out,
+                &json!(22),
+                &json!({ "tool_name": "Bash", "input": { "command": "one" } }),
+                &paths, Some(&ctx), 20, 5,
+            ).unwrap();
+            ui.join().unwrap();
+        }
+
+        // Second call: allow_always (different fingerprint so no short-circuit)
+        {
+            let req_path = paths.request.clone();
+            let resp_path = paths.response.clone();
+            let ui = thread::spawn(move || {
+                for _ in 0..50 {
+                    if let Ok(raw) = fs::read_to_string(&req_path) {
+                        if let Ok(req) = serde_json::from_str::<Value>(&raw) {
+                            let id = req["id"].as_str().unwrap().to_string();
+                            fs::write(&resp_path, serde_json::to_string(&json!({
+                                "id": id, "approved": true, "action": "allow_always",
+                            })).unwrap()).unwrap();
+                            return;
+                        }
+                    }
+                    thread::sleep(Duration::from_millis(20));
+                }
+            });
+            let mut out = Vec::new();
+            handle_permission(
+                &mut out,
+                &json!(23),
+                &json!({ "tool_name": "Bash", "input": { "command": "two" } }),
+                &paths, Some(&ctx), 20, 5,
+            ).unwrap();
+            ui.join().unwrap();
+        }
+
+        let entries = audit::read_all(&ctx.audit_path);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["decision"], "allow");
+        assert_eq!(entries[0]["reason"], "user_allow_once");
+        assert_eq!(entries[1]["decision"], "allow");
+        assert_eq!(entries[1]["reason"], "user_allow_always");
+    }
+
+    #[test]
+    fn audit_logs_user_deny_and_deny_pause() {
+        let (dir, paths) = tmp_paths();
+        let ctx = audit_ctx_for(dir.path());
+        fs::write(&paths.alive, "x").unwrap();
+
+        // user_deny (no action field = plain deny)
+        {
+            let req_path = paths.request.clone();
+            let resp_path = paths.response.clone();
+            let ui = thread::spawn(move || {
+                for _ in 0..50 {
+                    if let Ok(raw) = fs::read_to_string(&req_path) {
+                        if let Ok(req) = serde_json::from_str::<Value>(&raw) {
+                            let id = req["id"].as_str().unwrap().to_string();
+                            fs::write(&resp_path, serde_json::to_string(&json!({
+                                "id": id, "approved": false,
+                            })).unwrap()).unwrap();
+                            return;
+                        }
+                    }
+                    thread::sleep(Duration::from_millis(20));
+                }
+            });
+            let mut out = Vec::new();
+            handle_permission(
+                &mut out,
+                &json!(30),
+                &json!({ "tool_name": "Bash", "input": { "command": "x" } }),
+                &paths, Some(&ctx), 20, 5,
+            ).unwrap();
+            ui.join().unwrap();
+        }
+
+        // user_deny_pause
+        {
+            let req_path = paths.request.clone();
+            let resp_path = paths.response.clone();
+            let ui = thread::spawn(move || {
+                for _ in 0..50 {
+                    if let Ok(raw) = fs::read_to_string(&req_path) {
+                        if let Ok(req) = serde_json::from_str::<Value>(&raw) {
+                            let id = req["id"].as_str().unwrap().to_string();
+                            fs::write(&resp_path, serde_json::to_string(&json!({
+                                "id": id, "approved": false, "action": "deny_pause",
+                            })).unwrap()).unwrap();
+                            return;
+                        }
+                    }
+                    thread::sleep(Duration::from_millis(20));
+                }
+            });
+            let mut out = Vec::new();
+            handle_permission(
+                &mut out,
+                &json!(31),
+                &json!({ "tool_name": "Bash", "input": { "command": "y" } }),
+                &paths, Some(&ctx), 20, 5,
+            ).unwrap();
+            ui.join().unwrap();
+        }
+
+        let entries = audit::read_all(&ctx.audit_path);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["reason"], "user_deny");
+        assert_eq!(entries[1]["reason"], "user_deny_pause");
+    }
+
+    #[test]
+    fn audit_logs_timeout_when_no_response() {
+        let (dir, paths) = tmp_paths();
+        let ctx = audit_ctx_for(dir.path());
+        fs::write(&paths.alive, "x").unwrap();
+
+        let mut out = Vec::new();
+        handle_permission(
+            &mut out,
+            &json!(40),
+            &json!({ "tool_name": "Bash", "input": { "command": "ls" } }),
+            &paths,
+            Some(&ctx),
+            50, 1,
+        ).unwrap();
+
+        let entries = audit::read_all(&ctx.audit_path);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["decision"], "deny");
+        assert_eq!(entries[0]["reason"], "timeout");
+    }
+
+    #[test]
+    fn audit_ctx_is_optional_no_log_when_none() {
+        let (dir, paths) = tmp_paths();
+        let audit_path = dir.path().join("permission_audit.jsonl");
+        let tool_input = json!({ "command": "ls" });
+        storage::grant_on_disk(
+            &paths.permissions, "Bash", &tool_input, storage::DEFAULT_TTL_SECS,
+        ).unwrap();
+
+        let mut out = Vec::new();
+        handle_permission(
+            &mut out,
+            &json!(50),
+            &json!({ "tool_name": "Bash", "input": &tool_input }),
+            &paths,
+            None, // no audit
+            50, 1,
+        ).unwrap();
+
+        // No audit file created.
+        assert!(!audit_path.exists(), "audit file should not exist when ctx is None");
     }
 }
 
