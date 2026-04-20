@@ -115,6 +115,14 @@ pub fn read_file_as_base64(path: String) -> Result<String, String> {
     Ok(encode_base64(&bytes))
 }
 
+/// Read ANY file as base64 — no path allowlist.
+/// Safe for user-initiated drag-drop (user explicitly chose the file).
+#[tauri::command]
+pub fn read_file_as_base64_any(path: String) -> Result<String, String> {
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(encode_base64(&bytes))
+}
+
 /// Return the byte size of a file without reading its contents.
 #[tauri::command]
 pub fn get_file_size(path: String) -> Result<u64, String> {
@@ -141,6 +149,13 @@ pub fn read_file_as_text(path: String) -> Result<String, String> {
     fs::read_to_string(&safe).map_err(|e| e.to_string())
 }
 
+/// Read ANY file as UTF-8 text — no path allowlist.
+/// Safe for user-initiated drag-drop (user explicitly chose the file).
+#[tauri::command]
+pub fn read_file_as_text_any(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
 /// Write UTF-8 text to a file (creates parent dirs if needed).
 #[tauri::command]
 pub fn write_file_as_text(path: String, content: String) -> Result<(), String> {
@@ -164,4 +179,154 @@ pub fn append_line_to_file(path: String, line: String) -> Result<(), String> {
         .open(&safe)
         .map_err(|e| e.to_string())?;
     writeln!(file, "{}", line).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn home() -> String {
+        std::env::var("HOME").unwrap_or_else(|_| "/tmp/testhome".to_string())
+    }
+
+    // ── Traversal rejection ───────────────────────────────────────────────────
+
+    #[test]
+    fn rejects_dotdot_in_middle() {
+        let p = format!("{}/.config/pixel-terminal/../../etc/passwd", home());
+        let r = expand_and_validate_path(&p);
+        assert!(r.is_err(), "expected rejection for /../ traversal");
+    }
+
+    #[test]
+    fn rejects_dotdot_tilde_shorthand() {
+        let r = expand_and_validate_path("~/.config/pixel-terminal/../../../etc/passwd");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn rejects_leading_dotdot() {
+        let r = expand_and_validate_path("../etc/passwd");
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn rejects_trailing_dotdot() {
+        let p = format!("{}/.config/pixel-terminal/..", home());
+        let r = expand_and_validate_path(&p);
+        assert!(r.is_err());
+    }
+
+    // ── Relative path rejection ───────────────────────────────────────────────
+
+    #[test]
+    fn rejects_bare_relative_path() {
+        let r = expand_and_validate_path("etc/passwd");
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("Relative paths"));
+    }
+
+    // ── Allowlist acceptance ──────────────────────────────────────────────────
+
+    #[test]
+    fn accepts_config_dir() {
+        let p = format!("{}/.config/pixel-terminal/buddy.json", home());
+        let r = expand_and_validate_path(&p);
+        // File won't exist but the allowlist check should pass — err is fs, not security
+        match r {
+            Ok(_) => {} // file exists (unlikely in CI), accepted
+            Err(e) => {
+                // Acceptable failures: file doesn't exist, canonicalize error
+                // Unacceptable: path guard rejection message
+                assert!(!e.contains("outside allowed"), "allowlisted path was rejected: {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn accepts_local_share_dir() {
+        let p = format!("{}/.local/share/pixel-terminal/vexil_feed.jsonl", home());
+        let r = expand_and_validate_path(&p);
+        match r {
+            Ok(_) => {}
+            Err(e) => assert!(!e.contains("outside allowed"), "allowlisted path was rejected: {e}"),
+        }
+    }
+
+    #[test]
+    fn accepts_projects_dir() {
+        let p = format!("{}/Projects/myapp/src/main.rs", home());
+        let r = expand_and_validate_path(&p);
+        match r {
+            Ok(_) => {}
+            Err(e) => assert!(!e.contains("outside allowed"), "allowlisted path was rejected: {e}"),
+        }
+    }
+
+    #[test]
+    fn accepts_tmp_prefix() {
+        let r = expand_and_validate_path("/tmp/pixel_test_file.json");
+        match r {
+            Ok(_) => {}
+            Err(e) => assert!(!e.contains("outside allowed"), "/tmp path was rejected: {e}"),
+        }
+    }
+
+    #[test]
+    fn accepts_claude_json_exact() {
+        let p = format!("{}/.claude.json", home());
+        let r = expand_and_validate_path(&p);
+        match r {
+            Ok(_) => {}
+            Err(e) => assert!(!e.contains("outside allowed"), ".claude.json exact path rejected: {e}"),
+        }
+    }
+
+    // ── Allowlist rejection ───────────────────────────────────────────────────
+
+    #[test]
+    fn rejects_ssh_dir() {
+        let p = format!("{}/.ssh/id_rsa", home());
+        let r = expand_and_validate_path(&p);
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("outside allowed"));
+    }
+
+    #[test]
+    fn rejects_etc_passwd() {
+        let r = expand_and_validate_path("/etc/passwd");
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("outside allowed"));
+    }
+
+    #[test]
+    fn rejects_claude_dir_itself() {
+        // ~/.claude/ is NOT in the allowlist (only ~/.claude.json exact path is)
+        let p = format!("{}/.claude/settings.json", home());
+        let r = expand_and_validate_path(&p);
+        // This SHOULD be rejected — Anima should not be able to read Claude's settings
+        assert!(r.is_err(), "~/.claude/ should be outside allowed prefixes");
+    }
+
+    #[test]
+    fn rejects_home_dir_itself() {
+        let r = expand_and_validate_path("~");
+        assert!(r.is_err());
+    }
+
+    // ── Tilde expansion ───────────────────────────────────────────────────────
+
+    #[test]
+    fn tilde_slash_expands_correctly() {
+        let p = "~/.config/pixel-terminal/test.json";
+        let r = expand_and_validate_path(p);
+        match r {
+            Ok(pb) => {
+                let s = pb.to_string_lossy();
+                assert!(s.starts_with('/'), "expanded path must be absolute");
+                assert!(!s.contains('~'), "tilde must be expanded");
+            }
+            Err(e) => assert!(!e.contains("outside allowed"), "tilde expansion failed allowlist: {e}"),
+        }
+    }
 }

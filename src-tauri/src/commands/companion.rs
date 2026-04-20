@@ -138,6 +138,37 @@ const EYES: &[&str] = &["dot", "star", "x", "circle", "at", "degree"];
 const HATS: &[&str] = &["none", "crown", "tophat", "propeller", "halo", "wizard", "beanie", "tinyduck"];
 const STATS: &[&str] = &["debugging", "patience", "chaos", "wisdom", "snark"];
 
+// ── Name syllable pools (mirrors JS session.js _NAME_STARTS / _NAME_ENDS / _NAME_BLOCKLIST) ──
+const NAME_STARTS: &[&str] = &[
+    // Asian Folklore & Yokai
+    "Ryu", "Sen", "Kai", "Jin", "Feng", "Qin", "Bai", "Shir", "Zen", "Tao",
+    // Polynesian
+    "Ka", "Ki", "Ma", "Wa", "Ra", "Ori", "Alo", "Koa", "Lani", "Mana", "Nalu",
+    // Tolkien / Elven
+    "Aer", "Cal", "Gil", "Lin", "Sil", "Thal", "Fin",
+    "Ael", "Aran", "Cael", "Elan", "Faer", "Helm", "Saer", "Bael",
+    // Valyrian
+    "Drac", "Vae", "Tar", "Rys", "Jae", "Zho", "Laen",
+    "Aeg", "Daen", "Nar", "Tor",
+    // Cyber-Pet
+    "Zot", "Blip", "Xel", "Hex", "Rez", "Vox", "Nyx",
+    "Arc", "Chip", "Flux", "Kern", "Var", "Sig", "Rad",
+];
+const NAME_ENDS: &[&str] = &[
+    // Asian Folklore
+    "on", "rin", "kin", "gu", "yu", "zen",
+    // Polynesian
+    "kai", "mai", "aia", "lua", "alo", "ana", "ila", "ali",
+    // Tolkien / Elven
+    "wen", "dal", "dor", "en", "shan", "aen", "ion", "ros", "mir", "las", "ael",
+    // Valyrian
+    "rys", "orn", "oz", "ur", "ys",
+    // Cyber-Pet
+    "ron", "bit", "rom", "arc", "ware",
+];
+// Hard blocks — mirrors JS _NAME_BLOCKLIST
+const NAME_BLOCKLIST: &[&str] = &["Finbit", "Aegon", "Radon", "Torys"];
+
 fn species_hue(species: &str) -> &'static str {
     match species {
         "dragon"   => "#FF4422", "cat"      => "#FF8844", "rabbit"   => "#FFB3BA",
@@ -197,6 +228,7 @@ pub struct Bones {
     pub hat:     String,
     pub shiny:   bool,
     pub stats:   HashMap<String, i32>,
+    pub name:    String,   // deterministic from salt — used when re-rolling oracle identity
 }
 
 pub fn roll_bones(uuid: &str) -> Bones {
@@ -260,6 +292,17 @@ pub fn roll_bones_with_salt(uuid: &str, salt: &str) -> Bones {
         stats.insert(stat.to_string(), val);
     }
 
+    // Roll N+1, N+2: Name (syllable combiner — mirrors JS rollFamiliarBones name logic)
+    // Runs after stats to preserve existing RNG sequence for all prior fields.
+    let start_idx = (rand.next() * NAME_STARTS.len() as f64) as usize;
+    let end_base  = (rand.next() * NAME_ENDS.len()   as f64) as usize;
+    let start = NAME_STARTS[start_idx];
+    let mut name = format!("{}{}", start, NAME_ENDS[end_base]);
+    for i in 1..NAME_ENDS.len() {
+        if !NAME_BLOCKLIST.contains(&name.as_str()) { break; }
+        name = format!("{}{}", start, NAME_ENDS[(end_base + i) % NAME_ENDS.len()]);
+    }
+
     Bones {
         rarity:  rarity.name.to_string(),
         species: species.to_string(),
@@ -267,6 +310,7 @@ pub fn roll_bones_with_salt(uuid: &str, salt: &str) -> Bones {
         hat:     hat.to_string(),
         shiny,
         stats,
+        name,
     }
 }
 
@@ -315,6 +359,7 @@ fn write_buddy_bones(
     salt: &str,
     soul: &Value,
     hatched_at: i64,
+    roll_name: bool,
 ) -> Result<Value, String> {
     let buddy_path = PathBuf::from(home).join(".config/pixel-terminal/buddy.json");
 
@@ -334,11 +379,23 @@ fn write_buddy_bones(
 
     let obj = updated.as_object_mut().ok_or("buddy.json is not a JSON object")?;
 
-    // Soul fields from claude.json — personality is LLM-generated and precious.
-    if let Some(name) = soul.get("name").and_then(|v| v.as_str()) {
-        obj.insert("name".to_string(), Value::String(name.to_string()));
-    } else if !obj.contains_key("name") {
-        obj.insert("name".to_string(), Value::String("Buddy".to_string()));
+    // Name: either rolled from bones (re-roll path) or sourced from the LLM soul (sync path).
+    if roll_name {
+        // Re-roll: use the deterministic name derived from the new salt.
+        // Set nameRolled sentinel so sync_buddy restarts don't clobber it.
+        obj.insert("name".to_string(),        Value::String(bones.name.clone()));
+        obj.insert("nameRolled".to_string(),  Value::Bool(true));
+    } else {
+        // Sync path: preserve a previously rolled name; otherwise use soul name.
+        let already_rolled = obj.get("nameRolled").and_then(|v| v.as_bool()).unwrap_or(false);
+        if !already_rolled {
+            if let Some(name) = soul.get("name").and_then(|v| v.as_str()) {
+                obj.insert("name".to_string(), Value::String(name.to_string()));
+            } else if !obj.contains_key("name") {
+                obj.insert("name".to_string(), Value::String("Buddy".to_string()));
+            }
+        }
+        // If already_rolled == true, the rolled name already in buddy.json stays untouched.
     }
     if let Some(personality) = soul.get("personality").and_then(|v| v.as_str()) {
         // Always preserve the user's unique LLM-generated personality from Claude Code.
@@ -423,14 +480,17 @@ pub fn sync_buddy() -> Result<SyncResult, String> {
                 let synced_from = existing.get("syncedFrom").and_then(|v| v.as_str()).unwrap_or("");
                 let existing_salt = existing.get("companionSeed").and_then(|v| v.as_str()).unwrap_or(DEFAULT_SALT);
                 // Compare hatchedAt + name + personality + salt — catches re-rolls, renames,
-                // personality edits, and any-buddy salt changes
+                // personality edits, and any-buddy salt changes.
+                // Skip name comparison when nameRolled is set — rolled names won't match soul name
+                // by design and should not trigger a re-sync.
                 let existing_name = existing.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let soul_name     = soul.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let name_rolled   = existing.get("nameRolled").and_then(|v| v.as_bool()).unwrap_or(false);
                 let existing_pers = existing.get("personality").and_then(|v| v.as_str()).unwrap_or("");
                 let soul_pers     = soul.get("personality").and_then(|v| v.as_str()).unwrap_or("");
                 if synced_at == hatched_at && synced_from == "claude-code"
                     && existing_salt == salt
-                    && (soul_name.is_empty() || existing_name == soul_name)
+                    && (name_rolled || soul_name.is_empty() || existing_name == soul_name)
                     && (soul_pers.is_empty() || existing_pers == soul_pers)
                 {
                     let name    = existing.get("name").and_then(|v| v.as_str()).unwrap_or("Buddy");
@@ -445,7 +505,7 @@ pub fn sync_buddy() -> Result<SyncResult, String> {
         }
     }
 
-    let buddy = write_buddy_bones(&home, &uuid, &salt, &soul, hatched_at)?;
+    let buddy = write_buddy_bones(&home, &uuid, &salt, &soul, hatched_at, false)?;
     let name    = buddy.get("name").and_then(|v| v.as_str()).unwrap_or("Buddy");
     let species = buddy.get("species").and_then(|v| v.as_str()).unwrap_or("?");
     let rarity  = buddy.get("rarity").and_then(|v| v.as_str()).unwrap_or("?");
@@ -495,6 +555,6 @@ pub fn reroll_oracle() -> Result<Value, String> {
         }
     };
 
-    write_buddy_bones(&home, &uuid, &salt, &soul, hatched_at)
+    write_buddy_bones(&home, &uuid, &salt, &soul, hatched_at, true)
 }
 

@@ -350,29 +350,12 @@ function renderHistoryList(entries) {
   const frag = document.createDocumentFragment();
   for (const entry of entries) {
     const card = createHistoryCard(entry);
-    if (entry.session_id === _activeId) card.classList.add('active');
+    if (_activeId === entry.session_id) card.classList.add('active');
     frag.appendChild(card);
   }
   $.historyList.appendChild(frag);
 }
 
-/** Show the currently-viewed history session in the stable #history-current element.
- *  This element is separate from #history-list so renderHistoryList never wipes it. */
-function showCurrentHistoryCard(entry) {
-  if (!$.historyCurrent) return;
-  $.historyCurrent.innerHTML = '';
-
-  const label = document.createElement('div');
-  label.className = 'history-pin-label';
-  label.textContent = 'VIEWING';
-
-  const card = createHistoryCard(entry);
-  card.classList.add('active', 'pinned');
-  card.prepend(label);
-
-  $.historyCurrent.appendChild(card);
-  $.historyCurrent.classList.remove('hidden');
-}
 
 function createHistoryCard(entry) {
   const card = document.createElement('div');
@@ -410,8 +393,8 @@ async function loadHistorySession(entry, cardEl) {
     _scrollPos[_activeId] = $.messageLog.scrollTop;
   }
 
-  // Mark loading
-  document.querySelectorAll('.history-card').forEach(c => c.classList.remove('active'));
+  // Mark loading — also clear any stale loading class left by a prior successful load
+  document.querySelectorAll('.history-card').forEach(c => c.classList.remove('active', 'loading'));
   cardEl.classList.add('active', 'loading');
 
   try {
@@ -422,9 +405,7 @@ async function loadHistorySession(entry, cardEl) {
     }
 
     _activeId = entry.session_id;
-
-    // Show in stable #history-current element (survives list re-renders)
-    showCurrentHistoryCard(entry);
+    cardEl.classList.remove('loading');
 
     // Disable input
     if ($.inputField) {
@@ -443,6 +424,7 @@ async function loadHistorySession(entry, cardEl) {
     console.error('[history] load failed:', err);
     cardEl.classList.remove('loading');
     _activeId = null;
+    renderHistoryList(_filtered);
   }
 }
 

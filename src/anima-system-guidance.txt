@@ -1,0 +1,9 @@
+## Context Continuity
+
+If your context was compressed (you'll see a recovery note above):
+1. Read the recovery context — it has your original task, recent tools, and last output
+2. Re-read key files ONLY if you're unsure of their current state
+3. State what you believe the current task is before continuing
+4. Do NOT re-do completed work — check file state first
+
+For complex multi-step tasks, state your progress and next steps after each major milestone.

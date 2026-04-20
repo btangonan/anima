@@ -164,7 +164,6 @@ async function spawnClaude(id) {
         });
         claudeArgs.push(
           '--permission-mode', 'default',
-          '--strict-mcp-config',
           '--mcp-config', info.path,
           '--permission-prompt-tool', info.toolFlag,
         );
@@ -572,7 +571,7 @@ async function sendMessage(id, text, opts = {}) {
         const dimStr = (att.originalWidth && att.originalHeight)
           ? ` | original dimensions: ${att.originalWidth}×${att.originalHeight}px`
           : '';
-        content[0].text += `\n\n[Attached image: ${att.name}${dimStr} | path: ${att.path}]`;
+        content[0].text += `\n\n[Attached image: ${att.name}${dimStr}${att.path ? ` | path: ${att.path}` : ' | source: clipboard'}]`;
         content.push({ type: 'image', source: { type: 'base64', media_type: att.mimeType, data: att.data } });
       } else {
         content.push({ type: 'text', text: `\n\n[Attached file: ${att.name} | path: ${att.path}]\n${att.data}` });

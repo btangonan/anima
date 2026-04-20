@@ -156,10 +156,18 @@ export function createMsgEl(msg) {
     const hasResult = msg.result !== null && msg.result !== undefined;
     const status = hasResult ? '\u2713' : '\u2026';
     el.dataset.toolId = msg.toolId;
-    el.innerHTML = `<div class="tool-line">${icon} <span class="tool-name">${esc(msg.toolName)}</span>${hint ? ` <span class="tool-hint">${esc(hint)}</span>` : ''} <span class="tool-status">${status}</span></div>`;
+    const isMcp = typeof msg.toolName === 'string' && msg.toolName.startsWith('mcp__');
+    const displayName = isMcp ? msg.toolName.replace(/^mcp__/, '') : msg.toolName;
+    const badge = isMcp ? `<span class="tool-mcp-badge">MCP</span> ` : '';
+    el.innerHTML = `<div class="tool-line">${icon} ${badge}<span class="tool-name">${esc(displayName)}</span>${hint ? ` <span class="tool-hint">${esc(hint)}</span>` : ''} <span class="tool-status">${status}</span></div>`;
 
   } else if (msg.type === 'system-msg') {
     el.innerHTML = `<div class="system-label">${esc(msg.text)}</div>`;
+
+  } else if (msg.type === 'hook-event') {
+    const summary = `hook: ${esc(msg.hookName || 'unknown')} \u00b7 ${esc(msg.eventType || 'event')}`;
+    const body = esc(msg.payload || '');
+    el.innerHTML = `<details class="hook-event"><summary class="system-label">${summary}</summary><pre class="hook-event-body">${body}</pre></details>`;
 
   } else if (msg.type === 'seq-think') {
     el.innerHTML = `<div class="seq-think-label">${esc(msg.text)}</div>`;

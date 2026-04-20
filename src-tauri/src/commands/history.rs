@@ -263,7 +263,6 @@ pub async fn load_session_history(file_path: String) -> Result<Vec<SessionHistor
                                 }
                                 "tool_use" => {
                                     let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                    if name.starts_with("mcp__") { continue; }
                                     let id = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                     let input = block.get("input")
                                         .map(|v| serde_json::to_string(v).unwrap_or_default())

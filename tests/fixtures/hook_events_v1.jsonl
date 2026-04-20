@@ -1,0 +1,15 @@
+{"type":"hook_event","subtype":"hook_started","hook_event":"PreCompact","timestamp":"2026-04-18T23:00:00Z"}
+{"type":"hook_event","subtype":"hook_response","hook_event":"PostCompact","timestamp":"2026-04-18T23:00:05Z"}
+{"type":"hook_event","subtype":"hook_started","hook_event":"SessionStart","additional_context":"Contract loaded. Using gemini-memory pixel_terminal.","timestamp":"2026-04-18T23:00:10Z"}
+{"type":"hook_event","subtype":"hook_started","hook_event":"SubagentStart","subagent_type":"general-purpose","description":"Research slash menu refactor options","timestamp":"2026-04-18T23:00:15Z"}
+{"type":"hook_event","subtype":"hook_response","hook_event":"SubagentStop","subagent_type":"general-purpose","tokens_used":15234,"duration_ms":12400,"timestamp":"2026-04-18T23:00:27Z"}
+{"type":"hook_event","subtype":"hook_started","hook_event":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls /tmp","description":"List /tmp"},"timestamp":"2026-04-18T23:00:30Z"}
+{"type":"hook_event","subtype":"hook_response","hook_event":"PostToolUse","tool_name":"Bash","stdout":"file1.txt\nfile2.txt\n","timestamp":"2026-04-18T23:00:31Z"}
+{"type":"hook_event","subtype":"hook_response","hook_event":"Stop","stop_reason":"end_turn","timestamp":"2026-04-18T23:00:35Z"}
+{"type":"hook_event","hook_event":"Notification","notification_type":"permission_prompt","message":"Allow Bash to run 'rm -rf ./build'?","timestamp":"2026-04-18T23:00:40Z"}
+{"type":"hook_event","hook_event":"Notification","notification_type":"idle_prompt","message":"Session idle for 5 minutes.","timestamp":"2026-04-18T23:00:45Z"}
+{"type":"hook_event","hook_event":"Notification","notification_type":"auth_success","message":"Logged in to Anthropic.","timestamp":"2026-04-18T23:00:50Z"}
+{"type":"hook_event","hook_event":"Notification","notification_type":"elicitation_dialog","message":"Confirm: proceed with destructive operation?","timestamp":"2026-04-18T23:00:55Z"}
+{"type":"hook_event","subtype":"hook_response","hook_event":"PostToolUseFailure","hook_name":"context-sideband.sh","stderr":"sed: -e expression #1: unknown option","timestamp":"2026-04-18T23:01:00Z"}
+{"type":"hook_event","subtype":"hook_started","hook_event":"UserPromptSubmit","prompt_preview":"fix the slash menu","timestamp":"2026-04-18T23:01:05Z"}
+{"type":"hook_event","subtype":"hook_response","hook_event":"PostToolUse","hook_name":"pixel_gate.py","permission_decision":"deny","stderr":"blocked by pattern","timestamp":"2026-04-18T23:01:10Z"}

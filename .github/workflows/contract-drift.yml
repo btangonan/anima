@@ -1,0 +1,87 @@
+name: Contract Drift
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/hook-events.js'
+      - 'src/events.js'
+      - 'tests/fixtures/hook_events_v1.jsonl'
+      - 'tests/hook_event_contract.test.js'
+      - 'scripts/contract_drift_ci.sh'
+      - 'scripts/plan_manifest_check.sh'
+      - 'tests/plan_manifest_check.test.sh'
+      - '.claude/plans/anima-s-tier-v*.md'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/hook-events.js'
+      - 'src/events.js'
+      - 'tests/fixtures/hook_events_v1.jsonl'
+      - 'tests/hook_event_contract.test.js'
+      - '.claude/plans/anima-s-tier-v*.md'
+  schedule:
+    # nightly at 07:00 UTC — 00:00 PT / 03:00 ET
+    - cron: '0 7 * * *'
+
+jobs:
+  contract-test:
+    name: Hook Contract Test (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx vitest run tests/hook_event_contract.test.js
+
+  contract-drift-nightly:
+    name: Live CLI Drift Capture
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: install claude CLI (best-effort)
+        run: |
+          npm install -g @anthropic-ai/claude-code || echo "claude CLI install failed; skipping live capture"
+        continue-on-error: true
+      - name: run drift capture
+        run: |
+          if ! command -v claude >/dev/null; then
+            echo "claude CLI unavailable; skipping live capture job (not a failure)"
+            exit 0
+          fi
+          bash scripts/contract_drift_ci.sh || true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: upload drift log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-drift-log
+          path: ~/.local/share/pixel-terminal/contract-drift.log
+          if-no-files-found: ignore
+
+  plan-manifest-parity:
+    name: Plan-Manifest Parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check current plan is parity-clean
+        run: |
+          # Runs against the most recent v-plan in the repo. If none exists,
+          # the job is a no-op so this workflow stays non-blocking on legacy
+          # branches.
+          plan=$(ls -1 .claude/plans/anima-s-tier-v*.md 2>/dev/null | sort -V | tail -1 || true)
+          if [[ -z "$plan" ]]; then
+            echo "no v-plan found; skipping"
+            exit 0
+          fi
+          echo "checking $plan"
+          bash scripts/plan_manifest_check.sh "$plan"
+      - name: run synthetic fixture tests
+        run: bash tests/plan_manifest_check.test.sh

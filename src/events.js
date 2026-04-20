@@ -48,6 +48,36 @@ async function readContextSideband(sessionId) {
   } catch { return null; }
 }
 
+// Read sideband and update session state + card. Called from tool_result AND turn-end idle timer.
+function refreshContextSideband(id) {
+  const s = sessions.get(id);
+  if (!s) return;
+  readContextSideband(id).then(sb => {
+    if (!sb || typeof sb.pct !== 'number') {
+      pxLog('CTX', `id:${id.slice(0,8)} sideband:none`);
+      return;
+    }
+    const localPct = (s._contextTokens && s._contextBaseline)
+      ? Math.min(100, Math.round(
+          Math.max(0, s._contextTokens - s._contextBaseline)
+          / Math.max(1, (s._contextWindow || 200_000) - s._contextBaseline) * 100))
+      : 0;
+    const isJSONL = sb.source === 'jsonl';
+    if (isJSONL && typeof s._authoritativePct === 'number' && sb.pct < s._authoritativePct && !s._compactionDetected) {
+      pxLog('CTX', `id:${id.slice(0,8)} JSONL ${sb.pct}% < current ${s._authoritativePct}% — skipped`);
+      return;
+    }
+    s._authoritativePct = sb.pct;
+    if (sb.window) s._contextWindow = sb.window;
+    pxLog('CTX', `id:${id.slice(0,8)} sideband${isJSONL ? '[jsonl]' : '[statusline]'}:${sb.pct}% local:${localPct}%`);
+    if (sb.pct >= 85 && !s._compactionWarned) {
+      appendVexilFeed({ type: 'compaction_imminent', session_id: id.slice(0, 8), pct: sb.pct, context_tokens: s._contextTokens, source: 'sideband' });
+      s._compactionWarned = true;
+    }
+    updateSessionCard(id);
+  }).catch(err => pxLog('CTX', `id:${id.slice(0,8)} sideband error: ${err?.message || err}`));
+}
+
 // ── Vexil Master feed (proactive cross-session commentary) ──────────────
 const VEXIL_FEED_PATH = '~/.local/share/pixel-terminal/vexil_feed.jsonl';
 function appendVexilFeed(entry) {
@@ -348,6 +378,9 @@ export function handleEvent(id, event) {
             appendVexilFeed({ type: 'tool_error', session_id: id.slice(0, 8), tool: toolName, error: preview });
           }
           delete s.toolPending[b.tool_use_id];
+          // PostToolUse hook has written the sideband by the time tool_result arrives — read it now
+          // so the context % appears on the first tool call rather than waiting for turn end.
+          refreshContextSideband(id);
           // Flush pre-tool text from vexil turns — only post-tool text is companion voice.
           // "vexil explain X" → Claude reads file (tool_result fires here) → reply is voice.
           // "vexil run /dream" → dream completes (tool_result) → "DREAM COMPLETE" text → NOT voice.
@@ -445,43 +478,8 @@ export function handleEvent(id, event) {
           s._taskLedger.lastText = s._turnText.slice(-800);
           writeTaskLedger(id, s._taskLedger);
         }
-        // ── Sideband context calibration (authoritative % from JSONL hook) ──
-        readContextSideband(id).then(sb => {
-          if (!sb || typeof sb.pct !== 'number') {
-            pxLog('CTX', `id:${id.slice(0,8)} sideband:none (file missing or unreadable)`);
-            return;
-          }
-          // Local meter math for comparison logging
-          const localPct = (s._contextTokens && s._contextBaseline)
-            ? Math.min(100, Math.round(
-                Math.max(0, s._contextTokens - s._contextBaseline)
-                / Math.max(1, (s._contextWindow || 200_000) - s._contextBaseline) * 100))
-            : 0;
-          // Reject JSONL-approximated values that go backwards vs an authoritative statusline read.
-          // Context-sideband.sh uses raw token arithmetic; statusline uses Claude's used_percentage.
-          // If JSONL source computes lower than current, keep current to prevent visible backwards jump.
-          const isJSONL = sb.source === 'jsonl';
-          if (isJSONL && typeof s._authoritativePct === 'number' && sb.pct < s._authoritativePct && !s._compactionDetected) {
-            pxLog('CTX', `id:${id.slice(0,8)} JSONL ${sb.pct}% < current ${s._authoritativePct}% — skipped`);
-            return;
-          }
-          s._authoritativePct = sb.pct;
-          if (sb.window) s._contextWindow = sb.window;
-          pxLog('CTX', `id:${id.slice(0,8)} sideband${isJSONL ? '[jsonl]' : '[statusline]'}:${sb.pct}% local:${localPct}%`);
-
-          // Compaction warning: use authoritative % (compaction fires at ~95%)
-          if (sb.pct >= 85 && !s._compactionWarned) {
-            appendVexilFeed({
-              type: 'compaction_imminent',
-              session_id: id.slice(0, 8),
-              pct: sb.pct,
-              context_tokens: s._contextTokens,
-              source: 'sideband',
-            });
-            s._compactionWarned = true;
-          }
-          updateSessionCard(id);
-        }).catch(err => pxLog('CTX', `id:${id.slice(0,8)} sideband error: ${err?.message || err}`));
+        // ── Sideband context calibration (turn-end refresh — catches any missed tool_result reads) ──
+        refreshContextSideband(id);
         // Always reset vexil state — must not bleed into next turn
         s._turnText = '';
         s._lastUserMsg = '';

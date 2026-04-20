@@ -4,8 +4,17 @@ import { $, esc, autoResize } from './dom.js';
 
 const { invoke } = window.__TAURI__.core;
 
-let _slashCommands = [];    // loaded once on startup
+let _slashCommands = [];    // loaded from ~/.claude/skills/ + commands/
+let _skillFlags    = [];    // --flags extracted from skills' argument-hint fields
+let _lastLoad      = 0;     // TTL timestamp for auto-reload
 
+// ── BUILTIN_SLASH_COMMANDS sync checklist ────────────────────────────────
+// Source of truth: `claude --help` (no programmatic slash-command registry exists).
+// Sync cadence: quarterly, or when a new Anthropic CLI release is announced.
+// Last manually synced: 2026-04-18.
+// To re-sync: run `claude --help`, diff slash commands, add/remove entries below.
+// Per-skill flags are auto-extracted from skill SKILL.md `argument-hint:` fields
+// at runtime (see _doLoad below) — only top-level CLI commands need manual sync.
 const BUILTIN_SLASH_COMMANDS = [
   // Anima-handled (local)
   { name: 'clear', description: 'Clear conversation and restart session' },
@@ -31,6 +40,9 @@ const BUILTIN_SLASH_COMMANDS = [
   { name: 'login', description: 'Log in to your Anthropic account' },
   { name: 'logout', description: 'Log out of your Anthropic account' },
   { name: 'fast', description: 'Toggle fast mode (same model, faster output)' },
+  { name: 'resume', description: 'Resume a previous session' },
+  { name: 'agents', description: 'Manage custom agents' },
+  { name: 'output-style', description: 'Configure output style' },
 ];
 let _slashActiveIdx = -1;   // keyboard-highlighted row
 let _activeToken   = null;  // token that opened the menu
@@ -51,25 +63,79 @@ const FLAG_ITEMS = [
   { name: 'brief',      description: 'meeting/pitch brief mode (use with /research)' },
 ];
 
-export async function loadSlashCommands() {
+async function _doLoad() {
   try {
     _slashCommands = await invoke('read_slash_commands');
+    // Collect unique --flags declared by skills via frontmatter `flags:`,
+    // excluding flags already present in the hardcoded FLAG_ITEMS list.
+    const existingFlagNames = new Set(FLAG_ITEMS.map(f => f.name));
+    const seen = new Set(existingFlagNames);
+    _skillFlags = [];
+    for (const cmd of _slashCommands) {
+      for (const flag of (cmd.flags || [])) {
+        const bare = flag;
+        if (!seen.has(bare)) {
+          seen.add(bare);
+          _skillFlags.push({ name: bare, description: `--${bare} flag (/${cmd.name})` });
+        }
+      }
+    }
   } catch (_) {
     _slashCommands = [];
+    _skillFlags = [];
   }
+}
+
+export async function loadSlashCommands() {
+  // TTL: re-scan at most once per second so hot internal callers are safe.
+  if (Date.now() - _lastLoad < 1000) return;
+  _lastLoad = Date.now();
+  await _doLoad();
+}
+
+// Force-refresh bypasses the 1s TTL — used by the user-visible menu-open path
+// so mid-session skill adds appear without restart or menu toggle.
+export async function loadSlashCommandsForce() {
+  _lastLoad = Date.now();
+  await _doLoad();
 }
 
 export function getSlashCommands() { return [...BUILTIN_SLASH_COMMANDS, ..._slashCommands]; }
 export function isBuiltinCommand(name) { return BUILTIN_SLASH_COMMANDS.some(c => c.name === name); }
 
+// Async stale-render guard: every showSlashMenu() call increments _menuVersion.
+// After awaiting the force-refresh, we abort if a newer call has superseded us.
+let _menuVersion = 0;
+
 export function showSlashMenu(token) {
+  // On the open edge, force-refresh skills/commands so mid-session adds appear
+  // immediately. Render synchronously with whatever's cached, then re-render
+  // once the refresh completes — only if no newer call has superseded us.
+  const isOpening = $.slashMenu.classList.contains('hidden');
+  const myVersion = ++_menuVersion;
+  if (isOpening) {
+    loadSlashCommandsForce().then(() => {
+      // Stale-render guard: only re-render if we're still the latest call.
+      if (myVersion !== _menuVersion) return;
+      // Re-render with fresh data, but only if menu is still visible for this token.
+      if (!$.slashMenu.classList.contains('hidden') && _activeToken === token) {
+        _renderMenu(token);
+      }
+    }).catch(() => {});
+  }
+
+  _renderMenu(token);
+}
+
+function _renderMenu(token) {
   _activeToken = token;
   const menu = $.slashMenu;
   const q = token.query.toLowerCase();
 
   let matches, prefix;
   if (token.type === 'flag') {
-    matches = FLAG_ITEMS.filter(f =>
+    const allFlags = [...FLAG_ITEMS, ..._skillFlags];
+    matches = allFlags.filter(f =>
       f.name.toLowerCase().includes(q) || f.description.toLowerCase().includes(q)
     );
     prefix = '--';

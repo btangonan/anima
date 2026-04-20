@@ -1,0 +1,11 @@
+[HEADER] short_id=86ff1527 config_sha=0ed7a5efaed3 pid=27899 ts=1776569990.671
+[RECV] ts=1776569990.671 payload={"method": "initialize", "params": {"protocolVersion": "2025-11-25", "capabilities": {"roots": {}, "elicitation": {}}, "clientInfo": {"name": "claude-code", "title": "Claude Code", "version": "2.1.114", "description": "Anthropic's agentic coding tool", "websiteUrl": "https://claude.com/claude-code"}}, "jsonrpc": "2.0", "id": 0} method=initialize
+[SEND] ts=1776569990.671 payload={"jsonrpc": "2.0", "id": 0, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "anima-permission-spike", "version": "0.0.1"}}}
+[RECV] ts=1776569990.672 payload={"method": "notifications/initialized", "jsonrpc": "2.0"} method=notifications/initialized
+[RECV] ts=1776569990.672 payload={"method": "tools/list", "jsonrpc": "2.0", "id": 1} method=tools/list
+[SEND] ts=1776569990.672 payload={"jsonrpc": "2.0", "id": 1, "result": {"tools": [{"name": "approve", "description": "Spike approve \u2014 always allows.", "inputSchema": {"type": "object", "properties": {"tool_name": {"type": "string"}, "input": {"type": "object"}}}}]}}
+[RECV] ts=1776569993.332 payload={"method": "tools/call", "params": {"name": "approve", "arguments": {"tool_name": "Bash", "input": {"command": "ping -c 1 anima-spike-86ff1527.invalid", "description": "Ping invalid test hostname once"}, "tool_use_id": "toolu_016P6FcDFhMn4cRq4CcPgCzF"}, "_meta": {"claudecode/toolUseId": "toolu_016P6FcDFhMn4cRq4CcPgCzF", "progressToken": 2}}, "jsonrpc": "2.0", "id": 2} method=tools/call
+[CALL-NAME] params.name='approve'
+[SEND] ts=1776569993.332 payload={"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "{\"allow\": true, \"reason\": \"spike-allow\"}"}]}}
+[RECV] ts=1776569993.335 payload={"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 2, "reason": "sibling_error"}} method=notifications/cancelled
+[SEND] ts=1776569993.335 payload={"jsonrpc": "2.0", "id": null, "error": {"code": -32601, "message": "method not found: notifications/cancelled"}}

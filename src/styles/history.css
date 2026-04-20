@@ -41,11 +41,8 @@
 }
 #history-view.hidden { display: none; }
 
-#history-current { flex-shrink: 0; background: linear-gradient(to left, rgba(255,255,255,0.05), transparent); padding: 4px 3px 0; }
+#history-current { flex-shrink: 0; padding: 4px 3px 0; }
 #history-current.hidden { display: none; }
-#history-current .history-pin-label { font-size: var(--fs-xs); font-weight: 700; color: var(--accent); letter-spacing: 0.1em; padding: 4px 8px 0; }
-#history-current .history-card { border-right-color: var(--accent); background: linear-gradient(to left, rgba(255,255,255,0.07), transparent); cursor: default; }
-#history-current .history-card:hover { background: linear-gradient(to left, rgba(255,255,255,0.07), transparent); border-right-color: var(--accent); }
 
 #history-search-wrap.hidden { display: none; }
 #history-search-wrap {
@@ -89,8 +86,8 @@
   transition: border-color 0.1s, background 0.1s;
   border-radius: 1px;
 }
-.history-card:hover { border-right-color: var(--border-hi); background: var(--bg2); }
-.history-card.active { border-right-color: var(--text-dim); background: var(--bg2); }
+.history-card:hover { border-left-color: var(--border-hi); background: var(--bg2); }
+.history-card.active { border-left-color: var(--accent); background: var(--bg2); }
 .history-card.loading { opacity: 0.5; pointer-events: none; }
 
 .history-card-name {

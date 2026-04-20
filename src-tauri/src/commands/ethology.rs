@@ -200,3 +200,66 @@ pub(crate) fn ethology(species: &str) -> Option<&'static str> {
         _ => return None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALL_SPECIES: &[&str] = &[
+        "owl", "cat", "dragon", "duck", "goose", "blob", "octopus", "penguin",
+        "turtle", "snail", "ghost", "axolotl", "capybara", "cactus", "robot",
+        "rabbit", "mushroom", "chonk",
+        "frog", "hamster", "fox", "koala", "platypus", "narwhal", "sloth", "hedgehog",
+    ];
+
+    #[test]
+    fn all_listed_species_return_some() {
+        for species in ALL_SPECIES {
+            assert!(
+                ethology(species).is_some(),
+                "ethology({species}) returned None — species missing from match"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_species_returns_none() {
+        assert!(ethology("unicorn").is_none());
+        assert!(ethology("").is_none());
+        assert!(ethology("Dragon").is_none()); // case-sensitive
+        assert!(ethology("CAT").is_none());
+    }
+
+    #[test]
+    fn owl_describes_perch_hunting() {
+        let e = ethology("owl").unwrap();
+        assert!(e.contains("Perch") || e.contains("perch"), "owl ethology should mention perch hunting");
+    }
+
+    #[test]
+    fn dragon_describes_altitude_perspective() {
+        let e = ethology("dragon").unwrap();
+        assert!(e.contains("altitude") || e.contains("Apex"), "dragon ethology should describe altitude/apex view");
+    }
+
+    #[test]
+    fn cat_describes_ambush() {
+        let e = ethology("cat").unwrap();
+        assert!(e.contains("Ambush") || e.contains("ambush"), "cat ethology should describe ambush predator");
+    }
+
+    #[test]
+    fn ethology_strings_are_nonempty() {
+        for species in ALL_SPECIES {
+            let e = ethology(species).unwrap();
+            assert!(e.len() > 20, "ethology({species}) suspiciously short: {:?}", e);
+        }
+    }
+
+    #[test]
+    fn species_count_matches_expected() {
+        // Guard: if a new species is added to the match but not ALL_SPECIES, this test
+        // won't catch it. But it ensures we don't silently shrink the species list.
+        assert_eq!(ALL_SPECIES.len(), 26, "update ALL_SPECIES if species list changed");
+    }
+}

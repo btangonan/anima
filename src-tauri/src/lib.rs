@@ -8,7 +8,7 @@ use ws_bridge::{get_voice_status, ptt_release, ptt_start, set_omi_listening, set
 
 pub mod commands;
 pub mod mcp_gate;
-use commands::file_io::{append_line_to_file, get_file_size, get_file_size_any, read_file_as_base64, read_file_as_text, write_file_as_text};
+use commands::file_io::{append_line_to_file, get_file_size, get_file_size_any, read_file_as_base64, read_file_as_base64_any, read_file_as_text, read_file_as_text_any, write_file_as_text};
 use commands::history::{load_session_history, scan_session_history};
 use commands::companion::{sync_buddy, reroll_oracle};
 use commands::daemon::{start_daemon, DaemonShared};
@@ -41,8 +41,6 @@ pub fn run() {
             let about_i = MenuItem::with_id(app, "about", "About Anima", true, None::<&str>)?;
             let app_menu = Submenu::with_items(app, "Anima", true, &[
                 &about_i,
-                &PredefinedMenuItem::separator(app)?,
-                &PredefinedMenuItem::services(app, None)?,
                 &PredefinedMenuItem::separator(app)?,
                 &PredefinedMenuItem::hide(app, None)?,
                 &PredefinedMenuItem::hide_others(app, None)?,
@@ -85,7 +83,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_file_as_base64,
+            read_file_as_base64_any,
             read_file_as_text,
+            read_file_as_text_any,
             get_file_size,
             get_file_size_any,
             read_slash_commands,
