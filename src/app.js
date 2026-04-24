@@ -15,10 +15,9 @@ import {
 import { pushMessage, updateWorkingCursor, setPinToBottom, renderMessageLog, createMsgEl } from './messages.js';
 import { handleEvent, setStatus, setEventDeps } from './events.js';
 import { renderSessionCard, updateSessionCard, setActiveSession, showEmptyState, updateFamiliarDisplay } from './cards.js';
-import { initVoice, isSettingsOpen, setSettingsOpen, settingsUpdate } from './voice.js';
+import { initVoice, isSettingsOpen, setSettingsOpen, settingsUpdate, cancelTTS } from './voice.js';
 import { initOnboarding } from './onboarding.js';
 import { initBargeIn } from './bargein.js';
-import { cancelTTS } from './tts-player.js';
 import { initUISplit } from './ui-split.js';
 import { initAttachments } from './attachments.js';
 import {
