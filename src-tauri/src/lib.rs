@@ -3,11 +3,13 @@ use tauri::{
     Emitter, Manager,
 };
 
+pub mod voice_protocol;
 mod ws_bridge;
 use ws_bridge::{get_voice_status, ptt_release, ptt_start, set_omi_listening, set_voice_mode, switch_voice_source, sync_omi_sessions};
 
 pub mod commands;
 pub mod mcp_gate;
+pub mod models_manifest;
 use commands::file_io::{append_line_to_file, get_file_size, get_file_size_any, read_file_as_base64, read_file_as_base64_any, read_file_as_text, read_file_as_text_any, write_file_as_text};
 use commands::history::{load_session_history, scan_session_history};
 use commands::companion::{sync_buddy, reroll_oracle};
