@@ -60,6 +60,9 @@ jobs:
       - name: JS unit tests (soak tests excluded)
         run: npm test
 
+      - name: E2E voice user-flow (human-out-of-loop)
+        run: npx vitest run tests/e2e/voice-user-flow.test.js
+
       - name: Latency harness (--ci; skips real probes, validates contract)
         run: npm run harness:ci
 
