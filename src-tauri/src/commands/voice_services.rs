@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -39,7 +39,7 @@ impl VoiceServiceKind {
     }
 }
 
-// std::sync::Mutex so lock guards are never held across await points.
+// std::sync::Mutex — never held across await points.
 #[derive(Default)]
 pub struct VoiceServicesState {
     data: Mutex<VoiceData>,
@@ -49,6 +49,12 @@ pub struct VoiceServicesState {
 struct VoiceData {
     children: HashMap<VoiceServiceKind, CommandChild>,
     restart_counts: HashMap<VoiceServiceKind, u8>,
+    // Bug 2+4 fix: sentinel consumed by monitor to skip restart on deliberate kill.
+    intentional_stops: HashSet<VoiceServiceKind>,
+    // Bug 4 fix: monotonic per-service counter; stale monitors/messages are ignored.
+    generations: HashMap<VoiceServiceKind, u64>,
+    // Bug 5 fix: initial args preserved so crash restart restores --ble.
+    last_args: HashMap<VoiceServiceKind, Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -78,20 +84,38 @@ async fn port_open(port: u16) -> bool {
     .unwrap_or(false)
 }
 
-/// Spawns one sidecar binary (sync). Restart signals travel via channel to
-/// avoid recursive async calls and non-Send future issues.
+/// Kill one service intentionally (used for partial-start cleanup and explicit stop).
+/// Bumps generation so any in-flight monitor for this kind is invalidated.
+fn stop_kind(state: &Arc<VoiceServicesState>, kind: VoiceServiceKind) {
+    let child = {
+        let mut data = state.data.lock().unwrap();
+        data.intentional_stops.insert(kind);
+        let next_gen = data.generations.get(&kind).copied().unwrap_or(0).wrapping_add(1);
+        data.generations.insert(kind, next_gen);
+        data.restart_counts.remove(&kind);
+        data.last_args.remove(&kind);
+        data.children.remove(&kind)
+    };
+    if let Some(child) = child {
+        let _ = child.kill();
+    }
+}
+
+/// Spawn one sidecar binary (sync). Restart signals travel via channel to avoid
+/// recursive async calls. `generation` ties this monitor to the current lifecycle epoch.
 fn spawn_child<R: Runtime>(
     app: &AppHandle<R>,
     state: &Arc<VoiceServicesState>,
     kind: VoiceServiceKind,
     args: Vec<String>,
-    restart_tx: mpsc::UnboundedSender<(VoiceServiceKind, Vec<String>)>,
+    generation: u64,
+    restart_tx: mpsc::UnboundedSender<(VoiceServiceKind, u64, Vec<String>)>,
 ) -> Result<(), String> {
     let shell = app.shell();
     let mut command = shell
         .sidecar(kind.sidecar_name())
         .map_err(|e| e.to_string())?
-        .args(args);
+        .args(args.clone());
 
     command = match kind {
         VoiceServiceKind::Stt => command
@@ -131,12 +155,40 @@ fn spawn_child<R: Runtime>(
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Terminated(term) => {
-                    let should_restart = {
+                    let (should_restart, intentional, restart_args) = {
                         let mut data = state2.data.lock().unwrap();
                         data.children.remove(&kind);
-                        let count = data.restart_counts.entry(kind).or_insert(0);
-                        if *count < MAX_RESTARTS { *count += 1; true } else { false }
+
+                        // Stale monitor — a newer lifecycle epoch owns this service now.
+                        if data.generations.get(&kind).copied() != Some(generation) {
+                            (false, false, None)
+                        } else if data.intentional_stops.remove(&kind) {
+                            // Deliberate stop — clean up and signal stopped.
+                            data.restart_counts.remove(&kind);
+                            data.last_args.remove(&kind);
+                            (false, true, None)
+                        } else {
+                            // Unexpected crash — restart up to MAX_RESTARTS.
+                            let count = data.restart_counts.entry(kind).or_insert(0);
+                            let ok = *count < MAX_RESTARTS;
+                            if ok { *count += 1; }
+                            // Bug 5 fix: use stored args to preserve --ble.
+                            let restart_args = if ok {
+                                data.last_args.get(&kind).cloned().or_else(|| Some(args.clone()))
+                            } else {
+                                None
+                            };
+                            (ok, false, restart_args)
+                        }
                     };
+
+                    if intentional {
+                        let _ = app2.emit(
+                            "voice:stopped",
+                            VoiceServiceEvent { service: kind.label(), port: kind.port(), reason: Some("stopped by user".into()) },
+                        );
+                        break;
+                    }
 
                     let _ = app2.emit(
                         "voice:crashed",
@@ -147,13 +199,14 @@ fn spawn_child<R: Runtime>(
                         },
                     );
 
-                    if should_restart {
+                    if let Some(restart_args) = restart_args {
                         sleep(Duration::from_secs(1)).await;
-                        let restart_args = match kind {
-                            VoiceServiceKind::Stt => vec!["--ws-url".into(), "ws://127.0.0.1:9876".into()],
-                            VoiceServiceKind::Tts => vec!["--host".into(), "127.0.0.1".into(), "--port".into(), "9877".into()],
-                        };
-                        let _ = restart_tx.send((kind, restart_args));
+                        // Re-check generation after sleep — a stop/restart may have fired.
+                        let still_current = state2.data.lock().unwrap()
+                            .generations.get(&kind).copied() == Some(generation);
+                        if still_current {
+                            let _ = restart_tx.send((kind, generation, restart_args));
+                        }
                     }
                     break;
                 }
@@ -174,25 +227,34 @@ fn spawn_child<R: Runtime>(
     Ok(())
 }
 
-/// Restart-coordinator loop: receives (kind, args) restart signals from
-/// monitor tasks and re-spawns the sidecar synchronously.
+/// Restart-coordinator loop. Rejects stale generation messages so old monitors
+/// cannot spawn obsolete processes after a stop/restart.
 fn start_restart_loop<R: Runtime + 'static>(
     app: AppHandle<R>,
     state: Arc<VoiceServicesState>,
-    mut restart_rx: mpsc::UnboundedReceiver<(VoiceServiceKind, Vec<String>)>,
+    mut restart_rx: mpsc::UnboundedReceiver<(VoiceServiceKind, u64, Vec<String>)>,
 ) {
     tauri::async_runtime::spawn(async move {
-        while let Some((kind, args)) = restart_rx.recv().await {
-            if port_open(kind.port()).await {
+        while let Some((kind, generation, args)) = restart_rx.recv().await {
+            // Bug 4 fix: discard stale restart messages.
+            let is_current = state.data.lock().unwrap()
+                .generations.get(&kind).copied() == Some(generation);
+            if !is_current {
+                continue;
+            }
+
+            // Bug 1 fix: only TTS owns a port; STT connects to ws_bridge on 9876.
+            if kind == VoiceServiceKind::Tts && port_open(kind.port()).await {
                 let _ = app.emit(
                     "voice:port_unavailable",
                     VoiceServiceEvent { service: kind.label(), port: kind.port(), reason: Some("port in use during restart".into()) },
                 );
                 continue;
             }
+
             let (new_tx, new_rx) = mpsc::unbounded_channel();
             start_restart_loop(app.clone(), state.clone(), new_rx);
-            if let Err(e) = spawn_child(&app, &state, kind, args, new_tx) {
+            if let Err(e) = spawn_child(&app, &state, kind, args, generation, new_tx) {
                 let _ = app.emit(
                     "voice:crashed",
                     VoiceServiceEvent { service: kind.label(), port: kind.port(), reason: Some(e) },
@@ -202,22 +264,35 @@ fn start_restart_loop<R: Runtime + 'static>(
     });
 }
 
+/// Bug 1 fix: only check port for TTS (it binds 9877). STT is a client of
+/// ws_bridge on 9876 — checking that port would always block valid STT startup.
 async fn start_one<R: Runtime + 'static>(
     app: &AppHandle<R>,
     state: &Arc<VoiceServicesState>,
     kind: VoiceServiceKind,
     args: Vec<String>,
 ) -> Result<(), String> {
-    if port_open(kind.port()).await {
+    if kind == VoiceServiceKind::Tts && port_open(kind.port()).await {
         let _ = app.emit(
             "voice:port_unavailable",
             VoiceServiceEvent { service: kind.label(), port: kind.port(), reason: Some("port already in use".into()) },
         );
-        return Err(format!("{} port {} is already in use", kind.label(), kind.port()));
+        return Err(format!("tts port {} is already in use", kind.port()));
     }
+
+    let generation = {
+        let mut data = state.data.lock().unwrap();
+        data.intentional_stops.remove(&kind);
+        let next_gen = data.generations.get(&kind).copied().unwrap_or(0).wrapping_add(1);
+        data.generations.insert(kind, next_gen);
+        data.restart_counts.insert(kind, 0);
+        data.last_args.insert(kind, args.clone());
+        next_gen
+    };
+
     let (restart_tx, restart_rx) = mpsc::unbounded_channel();
     start_restart_loop(app.clone(), state.clone(), restart_rx);
-    spawn_child(app, state, kind, args, restart_tx)
+    spawn_child(app, state, kind, args, generation, restart_tx)
 }
 
 #[tauri::command]
@@ -234,27 +309,36 @@ pub async fn start_voice_sidecar<R: Runtime + 'static>(
     let tts_args = vec!["--host".into(), "127.0.0.1".into(), "--port".into(), "9877".into()];
 
     start_one(&app, &arc, VoiceServiceKind::Tts, tts_args).await?;
-    start_one(&app, &arc, VoiceServiceKind::Stt, stt_args).await?;
+    // Bug 3 fix: kill TTS if STT fails to avoid leaked sidecar.
+    if let Err(e) = start_one(&app, &arc, VoiceServiceKind::Stt, stt_args).await {
+        stop_kind(&arc, VoiceServiceKind::Tts);
+        return Err(e);
+    }
 
     voice_sidecar_health(state).await
 }
 
 #[tauri::command]
-pub async fn stop_voice_sidecar<R: Runtime>(
-    app: AppHandle<R>,
+pub async fn stop_voice_sidecar(
     state: State<'_, Arc<VoiceServicesState>>,
 ) -> Result<(), String> {
+    let arc = state.inner();
+    // Bug 2 fix: mark intentional + bump generation BEFORE killing, so monitor
+    // consumes the sentinel and does not restart.
     let children: Vec<_> = {
-        let mut data = state.inner().data.lock().unwrap();
-        data.restart_counts.clear();
+        let mut data = arc.data.lock().unwrap();
+        let kinds: Vec<_> = data.children.keys().copied().collect();
+        for kind in &kinds {
+            data.intentional_stops.insert(*kind);
+            let next_gen = data.generations.get(kind).copied().unwrap_or(0).wrapping_add(1);
+            data.generations.insert(*kind, next_gen);
+            data.restart_counts.remove(kind);
+            data.last_args.remove(kind);
+        }
         data.children.drain().collect()
     };
-    for (kind, child) in children {
+    for (_, child) in children {
         let _ = child.kill();
-        let _ = app.emit(
-            "voice:stopped",
-            VoiceServiceEvent { service: kind.label(), port: kind.port(), reason: Some("stopped by user".into()) },
-        );
     }
     Ok(())
 }
@@ -265,7 +349,7 @@ pub async fn restart_voice_sidecar<R: Runtime + 'static>(
     state: State<'_, Arc<VoiceServicesState>>,
     source: Option<String>,
 ) -> Result<VoiceServiceStatus, String> {
-    stop_voice_sidecar(app.clone(), state.clone()).await?;
+    stop_voice_sidecar(state.clone()).await?;
     sleep(Duration::from_millis(500)).await;
 
     let arc = state.inner().clone();
@@ -275,7 +359,10 @@ pub async fn restart_voice_sidecar<R: Runtime + 'static>(
     let tts_args = vec!["--host".into(), "127.0.0.1".into(), "--port".into(), "9877".into()];
 
     start_one(&app, &arc, VoiceServiceKind::Tts, tts_args).await?;
-    start_one(&app, &arc, VoiceServiceKind::Stt, stt_args).await?;
+    if let Err(e) = start_one(&app, &arc, VoiceServiceKind::Stt, stt_args).await {
+        stop_kind(&arc, VoiceServiceKind::Tts);
+        return Err(e);
+    }
 
     voice_sidecar_health(state).await
 }
