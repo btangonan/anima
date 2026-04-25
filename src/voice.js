@@ -9,7 +9,6 @@ import { getLintLogForSession, clearLintLog, setVexilLogListener, setOracleRespo
 import { clearSentAttachments } from './attachments.js';
 import { createTTSPlayer } from './tts-player.js';
 
-const { Command } = window.__TAURI__.shell;
 const { invoke } = window.__TAURI__.core;
 const { listen: tauriListen } = window.__TAURI__.event;
 
@@ -32,7 +31,7 @@ function _ttsEnabled() {
 
 async function _ensureTTSPlayer() {
   if (_ttsPlayer) return _ttsPlayer;
-  const wsUrl = localStorage.getItem('ttsBridgeUrl') || 'ws://127.0.0.1:9877';
+  const wsUrl = 'ws://127.0.0.1:9877';
   _ttsPlayer = createTTSPlayer({ wsUrl, sessionId: `anima-${Date.now()}` });
   try {
     await _ttsPlayer.connect();
@@ -376,28 +375,31 @@ export function initVoice() {
     }
   }).catch(e => console.warn('[voice] get_voice_status failed:', e));
 
-  // Omi indicator click — launch voice bridge if not connected
+  // Omi indicator click — start sidecars via Tauri invoke
+  async function startVoiceSidecar() {
+    _showDotStatus('Starting voice...');
+    try {
+      const status = await invoke('start_voice_sidecar', { source: voiceSource });
+      if (status?.sttPortOpen || status?.stt_running || status?.sttRunning) {
+        _showDotStatus('Voice starting...');
+      } else {
+        _showDotStatus('Voice sidecar started');
+      }
+      return status;
+    } catch (err) {
+      console.warn('[voice] start_voice_sidecar failed:', err);
+      _showDotStatus(String(err).includes('9876') ? 'Voice port unavailable' : 'Could not start voice');
+      return null;
+    }
+  }
+
   $.omiIndicator?.addEventListener('click', async (e) => {
     e.stopPropagation();
     if (omiConnected) {
       _showDotStatus('Voice bridge connected');
-    } else {
-      _showDotStatus('Starting mic…');
-      const home = await window.__TAURI__.path.homeDir();
-      const bridgePath = localStorage.getItem('voiceBridgePath');
-      if (!bridgePath) {
-        _showDotStatus('Set voiceBridgePath in Settings');
-        return;
-      }
-      // Validate path: reject shell metacharacters to prevent injection
-      if (/[;&|`$(){}[\]!#~]/.test(bridgePath)) {
-        _showDotStatus('Invalid bridge path');
-        return;
-      }
-      Command.create('sh', ['-c', `cd '${bridgePath.replace(/'/g, "'\\''")}' && source venv/bin/activate && python3 pixel_voice_bridge.py`]).execute().catch(() => {
-        _showDotStatus('Could not start voice bridge');
-      });
+      return;
     }
+    await startVoiceSidecar();
   });
 
   // Ctrl+Shift+O — toggle listening
@@ -438,6 +440,25 @@ export function initVoice() {
   });
 
   // CLR handled by initVexilTabs (tab-aware, capture phase)
+
+  // Sidecar lifecycle events
+  tauriListen('voice:started', (event) => {
+    _showDotStatus(`${event.payload.service.toUpperCase()} started`);
+  });
+  tauriListen('voice:stopped', () => {
+    omiConnected = false;
+    _omiIndicatorUpdate();
+  });
+  tauriListen('voice:crashed', (event) => {
+    console.warn('[voice] sidecar crashed:', event.payload);
+    _showDotStatus(`${event.payload.service.toUpperCase()} restarted`);
+  });
+  tauriListen('voice:port_unavailable', (event) => {
+    _showDotStatus(`Port ${event.payload.port} unavailable`);
+  });
+  tauriListen('voice:permission_denied', () => {
+    _showDotStatus('Microphone permission needed');
+  });
 
   // Connection events
   tauriListen('omi:connected', () => {

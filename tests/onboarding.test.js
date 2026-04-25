@@ -17,42 +17,33 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-// ── _validatePath ─────────────────────────────────────────────────────────────
+// ── _validatePath (bundled sidecar era) ──────────────────────────────────────
 
-test('_validatePath accepts absolute /Users path', () => {
+test('_validatePath returns bundled_sidecar mode for null', () => {
+  const r = _validatePath(null);
+  expect(r.ok).toBe(true);
+  expect(r.mode).toBe('bundled_sidecar');
+});
+
+test('_validatePath returns bundled_sidecar mode for empty string', () => {
+  expect(_validatePath('')).toMatchObject({ ok: true, mode: 'bundled_sidecar' });
+  expect(_validatePath('   ')).toMatchObject({ ok: true, mode: 'bundled_sidecar' });
+});
+
+test('_validatePath rejects manual paths (absolute)', () => {
   const r = _validatePath('/Users/brad/Projects/OmiWebhook');
-  expect(r.ok).toBe(true);
-  expect(r.path).toBe('/Users/brad/Projects/OmiWebhook');
+  expect(r.ok).toBe(false);
+  expect(r.reason).toBe('manual_path_removed');
 });
 
-test('_validatePath accepts tilde-home path', () => {
+test('_validatePath rejects manual paths (tilde)', () => {
   const r = _validatePath('~/Projects/OmiWebhook');
-  expect(r.ok).toBe(true);
+  expect(r.ok).toBe(false);
+  expect(r.reason).toBe('manual_path_removed');
 });
 
-test('_validatePath rejects empty string', () => {
-  expect(_validatePath('')).toMatchObject({ ok: false, reason: 'empty' });
-  expect(_validatePath('   ')).toMatchObject({ ok: false, reason: 'empty' });
-});
-
-test('_validatePath rejects relative paths', () => {
-  expect(_validatePath('OmiWebhook')).toMatchObject({ ok: false, reason: 'not_absolute' });
-  // `./` doesn't start with / or ~ so not_absolute catches it first
-  expect(_validatePath('./OmiWebhook')).toMatchObject({ ok: false, reason: 'not_absolute' });
-});
-
-test('_validatePath rejects shell metacharacters', () => {
-  // Each of these would break a shell interpolation.
-  for (const bad of [
-    '/Users/a;rm -rf /',
-    '/Users/a`whoami`',
-    '/Users/a$(id)',
-    '/Users/a|nc',
-    '/Users/a > /tmp/x',
-    '/Users/a&',
-  ]) {
-    expect(_validatePath(bad)).toMatchObject({ ok: false, reason: 'unsafe_chars' });
-  }
+test('_validatePath rejects manual paths (relative)', () => {
+  expect(_validatePath('OmiWebhook')).toMatchObject({ ok: false, reason: 'manual_path_removed' });
 });
 
 // ── _probePort ────────────────────────────────────────────────────────────────
@@ -104,6 +95,28 @@ test('_probePort resolves ok:false when WebSocket constructor throws', async () 
   expect(r.reason).toBe('construct_failed');
 });
 
+test('_probePort uses invokeFn for STT port when provided', async () => {
+  const invokeFn = vi.fn().mockResolvedValue({ stt_port_open: true, tts_port_open: false });
+  const r = await _probePort({ port: 9876, invokeFn });
+  expect(invokeFn).toHaveBeenCalledWith('voice_sidecar_health');
+  expect(r.ok).toBe(true);
+  expect(r.reason).toBe('health_check');
+});
+
+test('_probePort uses invokeFn for TTS port when provided', async () => {
+  const invokeFn = vi.fn().mockResolvedValue({ stt_port_open: false, tts_port_open: true });
+  const r = await _probePort({ port: 9877, invokeFn });
+  expect(r.ok).toBe(true);
+  expect(r.reason).toBe('health_check');
+});
+
+test('_probePort returns health_check_failed when invokeFn throws', async () => {
+  const invokeFn = vi.fn().mockRejectedValue(new Error('tauri error'));
+  const r = await _probePort({ port: 9876, invokeFn });
+  expect(r.ok).toBe(false);
+  expect(r.reason).toBe('health_check_failed');
+});
+
 // ── initOnboarding ────────────────────────────────────────────────────────────
 
 test('initOnboarding returns null when already completed', () => {
@@ -129,55 +142,44 @@ test('Skip sets voiceOnboardingComplete=1 and removes the overlay', () => {
   expect(document.querySelector('.voice-onboarding-overlay')).toBeNull();
 });
 
-test('Step 2 Next button is disabled until path validates', () => {
+test('Step 2 has Start voice services button (no path input)', () => {
   const overlay = initOnboarding();
   overlay.querySelector('[data-vo-next="2"]').click();
-  const input = overlay.querySelector('#vo-bridge-path');
-  const next = overlay.querySelector('[data-vo-step="2"] [data-vo-primary]');
-  expect(next.disabled).toBe(true);
-
-  input.value = 'not-absolute';
-  input.dispatchEvent(new Event('input'));
-  expect(next.disabled).toBe(true);
-
-  input.value = '/Users/brad/Projects/OmiWebhook';
-  input.dispatchEvent(new Event('input'));
-  expect(next.disabled).toBe(false);
+  expect(overlay.querySelector('[data-vo-start-sidecar]')).not.toBeNull();
+  expect(overlay.querySelector('#vo-bridge-path')).toBeNull();
 });
 
-test('Finish persists bridge path + tts flag when toggled', async () => {
-  const overlay = initOnboarding({ wsFactory: mockWsFactory({ behavior: 'open' }) });
-  // Advance through wizard
+test('Finish with TTS toggled sets ttsEnabled=1 (no voiceBridgePath)', async () => {
+  const invokeFn = vi.fn().mockResolvedValue({ stt_port_open: true, tts_port_open: true });
+  const win = { ...window, __TAURI__: { core: { invoke: invokeFn } }, localStorage: window.localStorage };
+  const overlay = initOnboarding({ win });
+  // Advance to step 2 → click Start → advances to step 3 (probes run)
   overlay.querySelector('[data-vo-next="2"]').click();
-  const input = overlay.querySelector('#vo-bridge-path');
-  input.value = '/Users/brad/Projects/OmiWebhook';
-  input.dispatchEvent(new Event('input'));
-  overlay.querySelector('[data-vo-step="2"] [data-vo-primary]').click();
-  // Allow probe microtask + setState to flush
+  overlay.querySelector('[data-vo-start-sidecar]').click();
   await new Promise((r) => setTimeout(r, 10));
+  // Advance to step 4
   overlay.querySelector('[data-vo-step="3"] [data-vo-primary]').click();
   overlay.querySelector('[data-vo-tts]').checked = true;
   overlay.querySelector('[data-vo-finish]').click();
 
   expect(window.localStorage.getItem('voiceOnboardingComplete')).toBe('1');
-  expect(window.localStorage.getItem('voiceBridgePath')).toBe('/Users/brad/Projects/OmiWebhook');
   expect(window.localStorage.getItem('ttsEnabled')).toBe('1');
-  expect(window.localStorage.getItem('ttsBridgeUrl')).toBe('ws://127.0.0.1:9877');
+  expect(window.localStorage.getItem('voiceBridgePath')).toBeNull();
+  expect(window.localStorage.getItem('ttsBridgeUrl')).toBeNull();
 });
 
 test('Finish without toggling TTS leaves ttsEnabled unset', async () => {
-  const overlay = initOnboarding({ wsFactory: mockWsFactory({ behavior: 'open' }) });
+  const invokeFn = vi.fn().mockResolvedValue({ stt_port_open: true, tts_port_open: true });
+  const win = { ...window, __TAURI__: { core: { invoke: invokeFn } }, localStorage: window.localStorage };
+  const overlay = initOnboarding({ win });
   overlay.querySelector('[data-vo-next="2"]').click();
-  const input = overlay.querySelector('#vo-bridge-path');
-  input.value = '~/Projects/OmiWebhook';
-  input.dispatchEvent(new Event('input'));
-  overlay.querySelector('[data-vo-step="2"] [data-vo-primary]').click();
+  overlay.querySelector('[data-vo-skip-start]').click();
   await new Promise((r) => setTimeout(r, 10));
   overlay.querySelector('[data-vo-step="3"] [data-vo-primary]').click();
   overlay.querySelector('[data-vo-finish]').click();
 
   expect(window.localStorage.getItem('ttsEnabled')).toBeNull();
-  expect(window.localStorage.getItem('voiceBridgePath')).toBe('~/Projects/OmiWebhook');
+  expect(window.localStorage.getItem('voiceBridgePath')).toBeNull();
 });
 
 test('_resetOnboarding clears the complete flag so wizard reopens', () => {
@@ -186,21 +188,12 @@ test('_resetOnboarding clears the complete flag so wizard reopens', () => {
   expect(window.localStorage.getItem('voiceOnboardingComplete')).toBeNull();
 });
 
-test('Probe UI shows green+red when STT up and TTS down', async () => {
-  // STT opens, TTS hangs → timeout fires at 20ms.
-  let call = 0;
-  const mixedFactory = (url) => {
-    call += 1;
-    const behavior = call === 1 ? 'open' : 'error';
-    return mockWsFactory({ behavior })(url);
-  };
-
-  const overlay = initOnboarding({ wsFactory: mixedFactory });
+test('Probe UI shows green+red when STT up and TTS down via invokeFn', async () => {
+  const invokeFn = vi.fn().mockResolvedValue({ stt_port_open: true, tts_port_open: false });
+  const win = { ...window, __TAURI__: { core: { invoke: invokeFn } }, localStorage: window.localStorage };
+  const overlay = initOnboarding({ win });
   overlay.querySelector('[data-vo-next="2"]').click();
-  const input = overlay.querySelector('#vo-bridge-path');
-  input.value = '/Users/brad/Projects/OmiWebhook';
-  input.dispatchEvent(new Event('input'));
-  overlay.querySelector('[data-vo-step="2"] [data-vo-primary]').click();
+  overlay.querySelector('[data-vo-start-sidecar]').click();
 
   await new Promise((r) => setTimeout(r, 30));
   const stt = overlay.querySelector('[data-vo-probe="stt"]');

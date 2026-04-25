@@ -5,12 +5,9 @@
  * through:
  *
  *   1. Welcome / what this enables (STT + TTS, local-first, $0 cost)
- *   2. Voice-bridge path — location of the OmiWebhook checkout.
- *      Writes to localStorage.voiceBridgePath. Claude validated for shell-
- *      metacharacter safety at call-site in voice.js.
- *   3. Connection test — attempts a brief ws handshake on the STT port and
- *      the TTS port. Shows GREEN/RED per port.
- *   4. Opt-in toggles — mic (voice in) + tts (voice out). Both default OFF.
+ *   2. Sidecar readiness — starts bundled anima-stt + anima-tts via Tauri invoke.
+ *   3. Connection test — probes STT + TTS ports via voice_sidecar_health.
+ *   4. Opt-in toggles — tts (voice out). Default OFF.
  *      Flipping tts=on flips localStorage.ttsEnabled=1.
  *
  * Cancellable at any step — skipping sets voiceOnboardingComplete=1 anyway
@@ -22,27 +19,18 @@
  */
 
 const LS_COMPLETE = 'voiceOnboardingComplete';
-const LS_BRIDGE_PATH = 'voiceBridgePath';
 const LS_TTS_ENABLED = 'ttsEnabled';
-const LS_TTS_URL = 'ttsBridgeUrl';
 
 const DEFAULT_STT_PORT = 9876;
 const DEFAULT_TTS_PORT = 9877;
 const DEFAULT_HOST = '127.0.0.1';
 const PROBE_TIMEOUT_MS = 1500;
 
-// Reject characters that could break the single-quoted shell interpolation in
-// voice.js. `~` is intentionally allowed because it's a valid path anchor;
-// tilde expansion only fires at word-start and voice.js quotes the path anyway.
-const SHELL_METACHARS_RE = /[;&|`$(){}[\]!#<>*?"'\\]/;
-
+// _validatePath: bundled sidecar era — no manual path needed.
+// Empty/null → ok (bundled sidecar mode). Non-empty → rejected (manual paths removed).
 export function _validatePath(p) {
-  if (!p || typeof p !== 'string') return { ok: false, reason: 'empty' };
-  const trimmed = p.trim();
-  if (!trimmed) return { ok: false, reason: 'empty' };
-  if (SHELL_METACHARS_RE.test(trimmed)) return { ok: false, reason: 'unsafe_chars' };
-  if (!trimmed.startsWith('/') && !trimmed.startsWith('~')) return { ok: false, reason: 'not_absolute' };
-  return { ok: true, path: trimmed };
+  if (p == null || String(p).trim() === '') return { ok: true, mode: 'bundled_sidecar' };
+  return { ok: false, reason: 'manual_path_removed' };
 }
 
 /**
@@ -54,7 +42,21 @@ export function _validatePath(p) {
  *
  * wsFactory is injectable for tests.
  */
-export function _probePort({ host = DEFAULT_HOST, port, wsFactory, timeoutMs = PROBE_TIMEOUT_MS } = {}) {
+export async function _probePort({ host = DEFAULT_HOST, port, wsFactory, timeoutMs = PROBE_TIMEOUT_MS, invokeFn } = {}) {
+  if (invokeFn) {
+    try {
+      const status = await invokeFn('voice_sidecar_health');
+      if (port === DEFAULT_STT_PORT) {
+        return { ok: Boolean(status.stt_port_open ?? status.sttPortOpen ?? status.stt_running ?? status.sttRunning), reason: 'health_check' };
+      }
+      if (port === DEFAULT_TTS_PORT) {
+        return { ok: Boolean(status.tts_port_open ?? status.ttsPortOpen ?? status.tts_running ?? status.ttsRunning), reason: 'health_check' };
+      }
+    } catch {
+      return { ok: false, reason: 'health_check_failed' };
+    }
+  }
+  // WebSocket fallback for tests / environments without Tauri invoke
   const factory = wsFactory || ((url) => new WebSocket(url));
   return new Promise((resolve) => {
     let settled = false;
@@ -96,13 +98,12 @@ export function _buildDom(doc = document) {
         </div>
       </section>
       <section class="voice-onboarding-step hidden" data-vo-step="2">
-        <label for="vo-bridge-path">Voice bridge path</label>
-        <input id="vo-bridge-path" type="text" spellcheck="false" autocomplete="off"
-               placeholder="/Users/you/Projects/OmiWebhook" />
-        <p class="voice-onboarding-hint" data-vo-path-hint>Absolute path only. No shell metacharacters.</p>
+        <p>Anima bundles the voice services. Click below to start them.</p>
+        <p class="voice-onboarding-hint" data-vo-sidecar-hint></p>
         <div class="voice-onboarding-nav">
           <button type="button" data-vo-back="1">Back</button>
-          <button type="button" data-vo-next="3" data-vo-primary disabled>Test connection</button>
+          <button type="button" data-vo-start-sidecar data-vo-primary>Start voice services</button>
+          <button type="button" data-vo-next="3" data-vo-skip-start>Skip</button>
         </div>
       </section>
       <section class="voice-onboarding-step hidden" data-vo-step="3">
@@ -138,7 +139,7 @@ function _show(overlay, step) {
   });
 }
 
-async function _runProbes(overlay, wsFactory) {
+async function _runProbes(overlay, wsFactory, invokeFn) {
   const sttItem = overlay.querySelector('[data-vo-probe="stt"]');
   const ttsItem = overlay.querySelector('[data-vo-probe="tts"]');
   const hint = overlay.querySelector('[data-vo-probe-hint]');
@@ -146,8 +147,8 @@ async function _runProbes(overlay, wsFactory) {
   ttsItem?.classList.remove('ok', 'bad');
 
   const [stt, tts] = await Promise.all([
-    _probePort({ port: DEFAULT_STT_PORT, wsFactory }),
-    _probePort({ port: DEFAULT_TTS_PORT, wsFactory }),
+    _probePort({ port: DEFAULT_STT_PORT, wsFactory, invokeFn }),
+    _probePort({ port: DEFAULT_TTS_PORT, wsFactory, invokeFn }),
   ]);
   sttItem?.classList.add(stt.ok ? 'ok' : 'bad');
   ttsItem?.classList.add(tts.ok ? 'ok' : 'bad');
@@ -169,55 +170,52 @@ export function initOnboarding({ doc = document, win = window, wsFactory } = {})
   // Skip if the user has already completed or dismissed the wizard.
   if (win.localStorage.getItem(LS_COMPLETE) === '1') return null;
 
+  const invokeFn = win.__TAURI__?.core?.invoke;
+
   const overlay = _buildDom(doc);
   doc.body.appendChild(overlay);
   _show(overlay, 1);
 
   const finish = (save = {}) => {
     win.localStorage.setItem(LS_COMPLETE, '1');
-    if (save.bridgePath) win.localStorage.setItem(LS_BRIDGE_PATH, save.bridgePath);
     if (save.ttsEnabled === true) {
       win.localStorage.setItem(LS_TTS_ENABLED, '1');
-      win.localStorage.setItem(LS_TTS_URL, `ws://${DEFAULT_HOST}:${DEFAULT_TTS_PORT}`);
     }
     overlay.remove();
   };
 
   overlay.querySelector('[data-vo-skip]')?.addEventListener('click', () => finish());
 
-  // Step 2 input → enables Test-connection button only on valid path
-  const pathInput = overlay.querySelector('#vo-bridge-path');
-  const pathHint = overlay.querySelector('[data-vo-path-hint]');
-  const step2Next = overlay.querySelector('[data-vo-step="2"] [data-vo-primary]');
-  // Prefill if previously saved
-  const priorPath = win.localStorage.getItem(LS_BRIDGE_PATH) || '';
-  if (priorPath && pathInput) pathInput.value = priorPath;
-  const _validateInput = () => {
-    const v = _validatePath(pathInput?.value || '');
-    if (!v.ok) {
-      step2Next.disabled = true;
-      if (pathHint) pathHint.textContent =
-        v.reason === 'not_absolute' ? 'Use an absolute path (starts with / or ~).'
-        : v.reason === 'unsafe_chars' ? 'Path contains unsafe characters.'
-        : 'Enter the absolute path to your OmiWebhook checkout.';
-    } else {
-      step2Next.disabled = false;
-      if (pathHint) pathHint.textContent = 'Looks good.';
+  // Step 2: start bundled sidecars
+  const sidecarHint = overlay.querySelector('[data-vo-sidecar-hint]');
+  overlay.querySelector('[data-vo-start-sidecar]')?.addEventListener('click', async () => {
+    if (sidecarHint) sidecarHint.textContent = 'Starting voice services…';
+    if (invokeFn) {
+      try {
+        await invokeFn('start_voice_sidecar', { source: win.localStorage.getItem('voiceSource') || 'mic' });
+        if (sidecarHint) sidecarHint.textContent = 'Voice services started.';
+      } catch (err) {
+        if (sidecarHint) sidecarHint.textContent = `Could not start: ${err}`;
+        return;
+      }
     }
-  };
-  pathInput?.addEventListener('input', _validateInput);
-  _validateInput();
+    _show(overlay, 3);
+    await _runProbes(overlay, wsFactory, invokeFn);
+  });
+
+  // Step 2 skip → go straight to probe (may fail if sidecars not running)
+  overlay.querySelector('[data-vo-skip-start]')?.addEventListener('click', async () => {
+    _show(overlay, 3);
+    await _runProbes(overlay, wsFactory, invokeFn);
+  });
 
   // Navigation: back/next buttons scoped per step
   overlay.querySelectorAll('[data-vo-next]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const target = Number(btn.dataset.voNext);
       if (target === 3) {
-        const v = _validatePath(pathInput?.value || '');
-        if (!v.ok) return;
-        win.localStorage.setItem(LS_BRIDGE_PATH, v.path);
         _show(overlay, 3);
-        await _runProbes(overlay, wsFactory);
+        await _runProbes(overlay, wsFactory, invokeFn);
       } else {
         _show(overlay, target);
       }
@@ -229,8 +227,7 @@ export function initOnboarding({ doc = document, win = window, wsFactory } = {})
 
   overlay.querySelector('[data-vo-finish]')?.addEventListener('click', () => {
     const ttsEnabled = overlay.querySelector('[data-vo-tts]')?.checked === true;
-    const bridgePath = _validatePath(pathInput?.value || '').path || '';
-    finish({ bridgePath, ttsEnabled });
+    finish({ ttsEnabled });
   });
 
   return overlay;
